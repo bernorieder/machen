@@ -70,8 +70,20 @@ final class GoogleAuth: ObservableObject {
         isSignedIn = stored != nil
     }
 
-    private var trimmedClientID: String { clientID.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var trimmedSecret: String { clientSecret.trimmingCharacters(in: .whitespacesAndNewlines) }
+    /// OAuth client built into the app by build.sh from Support/Config.local.plist; empty when absent.
+    /// When present, users just sign in; otherwise they enter their own client first.
+    static let bundledClientID = Bundle.main.object(forInfoDictionaryKey: "GoogleClientID") as? String ?? ""
+    static let bundledClientSecret = Bundle.main.object(forInfoDictionaryKey: "GoogleClientSecret") as? String ?? ""
+
+    var hasBundledClient: Bool { !Self.bundledClientID.isEmpty }
+    var canSignIn: Bool { !trimmedClientID.isEmpty }
+
+    private var trimmedClientID: String {
+        (hasBundledClient ? Self.bundledClientID : clientID).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    private var trimmedSecret: String {
+        (hasBundledClient ? Self.bundledClientSecret : clientSecret).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     func signIn() async throws {
         guard !trimmedClientID.isEmpty else { throw AuthError.missingClientID }

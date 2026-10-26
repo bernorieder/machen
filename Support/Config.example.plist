@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Copy to Config.local.plist (gitignored) and fill in your "Desktop app" OAuth client.
+     build.sh copies these values into the app so users only need to sign in. -->
+<plist version="1.0">
+<dict>
+    <key>GoogleClientID</key>
+    <string>1234567890-example.apps.googleusercontent.com</string>
+    <key>GoogleClientSecret</key>
+    <string>GOCSPX-example</string>
+</dict>
+</plist>

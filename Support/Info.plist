@@ -7,7 +7,7 @@
     <key>CFBundleDisplayName</key>
     <string>machen</string>
     <key>CFBundleIdentifier</key>
-    <string>local.machen</string>
+    <string>io.github.bernorieder.machen</string>
     <key>CFBundleExecutable</key>
     <string>machen</string>
     <key>CFBundlePackageType</key>

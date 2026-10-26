@@ -7,3 +7,6 @@ Package.resolved
 
 # macOS
 .DS_Store
+
+# Built-in Google OAuth client (see Support/Config.example.plist)
+Support/Config.local.plist

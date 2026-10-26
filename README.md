@@ -11,9 +11,19 @@ You can add events and tasks with the **+** buttons. A list's own **+** adds a t
 
 Requires macOS 14 or later.
 
-## 1. Create a Google OAuth client (one time)
+## Install
 
-Google requires every app that uses its APIs to have its own client ID. It's free and takes about five minutes.
+Download the latest `machen-<version>.dmg` from the GitHub Releases page, open it, and drag **machen** to **Applications**. Start it, click the menu bar icon, and click **Sign in with Google**. Your browser opens. Approve access, then click the menu bar icon again.
+
+Turn on **Settings → Launch at login** if you want machen to start automatically.
+
+## Building it yourself
+
+You need Xcode or the Command Line Tools (`xcode-select --install`).
+
+### 1. Create a Google OAuth client (one time)
+
+Every app that uses Google's APIs needs its own OAuth client. It's free and takes about five minutes.
 
 1. Open <https://console.cloud.google.com/> and create a new project (for example "machen").
 2. Go to **APIs & Services → Library** and enable both **Google Calendar API** and **Google Tasks API**.
@@ -21,29 +31,41 @@ Google requires every app that uses its APIs to have its own client ID. It's fre
    - Choose **External** as the user type and fill in the app name and your email.
    - Under **Audience**, add your own Google address as a **test user**.
 4. Go to **Clients** (or **Credentials → Create credentials → OAuth client ID**), choose application type **Desktop app**, and create it.
-5. Copy the **Client ID** and **Client secret**.
+5. Copy `Support/Config.example.plist` to `Support/Config.local.plist` and fill in the **Client ID** and **Client secret**. The file is gitignored. The build copies it into the app, so anyone using your build only has to sign in.
 
-> **About the 7-day sign-out:** while the app's publishing status is *Testing*, Google expires refresh tokens after 7 days, so you'd have to sign in again every week. To avoid that, go to **Audience** and click **Publish app**. For personal use you don't need verification. You'll just see an "unverified app" warning once when you sign in. Click **Advanced → Go to machen**.
+   Without this file, the app asks for a client ID and secret on first launch instead.
 
-## 2. Build and run
+> **Publishing status:** while the Google project is in *Testing*, only the test users you listed can sign in, and Google expires their sign-in after 7 days. To let anyone sign in, go to **Audience** and click **Publish app**. Until Google verifies the app, it's limited to 100 users, and people see an "unverified app" warning once when they sign in (**Advanced → Go to machen**). To remove the warning, apply for verification on the same page. Google then asks for a home page, a privacy policy, and a short video of the sign-in.
 
-You need Xcode or the Command Line Tools (`xcode-select --install`).
+### 2. Build and run
 
 ```bash
 ./build.sh
 open build/machen.app
 ```
 
-To install, move `build/machen.app` to `/Applications`. Then turn on **Settings → Launch at login** if you want it to start automatically.
+`build.sh` signs the app with the first **Developer ID Application** certificate in your keychain, or ad-hoc if you have none. Set `SIGN_IDENTITY` to choose a different one.
 
-## 3. Sign in
+### 3. Make a notarized release
 
-Click the menu bar icon, paste your client ID and secret, and click **Sign in with Google**. Your browser opens. Approve access, then click the menu bar icon again.
+Apple has to notarize a downloaded app, or macOS refuses to open it. One-time setup: save your notarization credentials in the keychain. The command asks for an app-specific password, which you can create at <https://account.apple.com> under **Sign-In and Security**.
+
+```bash
+xcrun notarytool store-credentials machen-notary --apple-id <your Apple ID> --team-id <your team ID>
+```
+
+Then, for each release, bump `CFBundleShortVersionString` in `Support/Info.plist` and run:
+
+```bash
+./release.sh
+```
+
+This builds and signs the app, packs it into `build/machen-<version>.dmg`, and has Apple notarize it. Upload the `.dmg` to a GitHub release.
 
 ## Notes
 
-- **Storage:** the sign-in token is stored in your macOS Keychain. The client ID and secret are stored in the app's preferences. (Google doesn't treat a Desktop client secret as confidential.)
-- **Keychain prompt after rebuilds:** the build is ad-hoc signed, so after each rebuild macOS may ask once whether machen can use its Keychain item. Click **Always Allow**.
+- **Storage:** the sign-in token is stored in your macOS Keychain. A built-in client ID and secret live inside the app bundle; ones you enter yourself are stored in the app's preferences. (Google doesn't treat a Desktop client secret as confidential, but keep it out of the public repository anyway.)
+- **Keychain prompt:** if macOS asks whether machen can use its Keychain item, click **Always Allow**. With a Developer ID signature this happens only once. Ad-hoc builds ask again after every rebuild.
 - **Display:** clicking the **Events** heading switches between Today, 2 days, 3 days and Week. In **Settings → Display** you can choose any number of days of events to show (1 to 14) and the row spacing (Compact, Standard or Roomy). When more than one day is shown, events are grouped under day headings. The **Multi-day events** menu sets how events lasting more than a day are handled: show them on every day they cover, show each one once, or exclude them. With **Show on today and start day**, an event running today appears once under Today. An event that starts later in the shown days appears once, on its start day, marked "Starts". (A multi-day event is an all-day event longer than one day, or a timed event lasting 24 hours or more. An overnight event such as 22:00–06:00 doesn't count.)
 - **Tasks filter:** choose **All** or **Due date only**, either in Settings → Display or by clicking the **Tasks** heading in the main screen. With **Due date only**, a parent task without a date stays visible if one of its subtasks has a date.
 - **Menu bar icon:** pick one of several icons in Settings → Display.

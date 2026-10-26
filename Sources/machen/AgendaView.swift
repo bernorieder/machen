@@ -69,10 +69,10 @@ struct AgendaView: View {
     }
 
     private var header: some View {
-        // Same style as the section headings below.
+        // Same grey as the section headings below, one size up.
         HStack {
             Text("machen")
-                .font(.caption.weight(.semibold))
+                .font(.callout.weight(.semibold))
                 .foregroundStyle(.secondary)
             Spacer()
         }

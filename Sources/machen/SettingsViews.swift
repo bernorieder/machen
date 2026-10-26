@@ -11,17 +11,19 @@ struct SignInView: View {
                 Image(systemName: "calendar").font(.title)
                 Text("machen").font(.title2.bold())
             }
-            Text("Connect your Google account to see the day's events and your open tasks.")
+            Text("Connect your Google account to see your upcoming events and open tasks.")
                 .foregroundStyle(.secondary)
-            Text("You need an OAuth client of type “Desktop app” from Google Cloud Console, with the Google Calendar API and Google Tasks API enabled. The README walks through it.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            if !auth.hasBundledClient {
+                Text("This build has no Google client built in. You need an OAuth client of type “Desktop app” from Google Cloud Console, with the Google Calendar API and Google Tasks API enabled. The README walks through it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            TextField("Client ID", text: $auth.clientID)
-                .textFieldStyle(.roundedBorder)
-            SecureField("Client secret", text: $auth.clientSecret)
-                .textFieldStyle(.roundedBorder)
+                TextField("Client ID", text: $auth.clientID)
+                    .textFieldStyle(.roundedBorder)
+                SecureField("Client secret", text: $auth.clientSecret)
+                    .textFieldStyle(.roundedBorder)
+            }
 
             if auth.isSigningIn {
                 HStack {
@@ -43,7 +45,7 @@ struct SignInView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(auth.clientID.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(!auth.canSignIn)
             }
 
             if let error {
@@ -55,9 +57,11 @@ struct SignInView: View {
 
             Spacer()
             HStack {
-                Link("Open Google Cloud Console",
-                     destination: URL(string: "https://console.cloud.google.com/apis/credentials")!)
-                    .font(.caption)
+                if !auth.hasBundledClient {
+                    Link("Open Google Cloud Console",
+                         destination: URL(string: "https://console.cloud.google.com/apis/credentials")!)
+                        .font(.caption)
+                }
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }
                     .controlSize(.small)

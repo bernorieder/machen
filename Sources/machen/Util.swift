@@ -194,7 +194,8 @@ enum MenuBarIcon {
     private static let fistImage: NSImage? = {
         guard let url = Bundle.main.url(forResource: "hand-fist", withExtension: "svg"),
               let image = NSImage(contentsOf: url) else { return nil }
-        image.size = NSSize(width: 14, height: 16)
+        // 14 pt tall: a solid glyph looks heavier than the outline SF Symbols at the same size
+        image.size = NSSize(width: 14 * image.size.width / image.size.height, height: 14)
         image.isTemplate = true
         return image
     }()

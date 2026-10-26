@@ -48,6 +48,8 @@ Every app that uses Google's APIs needs its own OAuth client. It's free and take
 open build/machen.app
 ```
 
+**Layout:** every spacing, size and font value of the main screen lives in `Support/layout.json`: row padding for each Spacing preset, heading paddings, indents, colour bars, and base font sizes. `build.sh` turns it into `Sources/machen/Layout.generated.swift` before compiling, so just edit the JSON and run `./build.sh`. A typo or wrong value stops the build and names the key or line. Keys starting with `_` are comments.
+
 The app icon is drawn in code by `Support/make-icon.swift`. After changing it, run `swift Support/make-icon.swift` to regenerate `Support/AppIcon.icns`.
 
 `build.sh` signs the app with the first **Developer ID Application** certificate in your keychain, or ad-hoc if you have none. Set `SIGN_IDENTITY` to choose a different one.
@@ -71,7 +73,7 @@ This builds and signs the app, packs it into `build/machen-<version>.dmg`, and h
 ## Notes
 
 - **Storage:** the sign-in token is stored in your macOS Keychain. A built-in client ID and secret live inside the app bundle; ones you enter yourself are stored in the app's preferences. (Google doesn't treat a Desktop client secret as confidential, but keep it out of the public repository anyway.)
-- **Keychain prompt:** if macOS asks whether machen can use its Keychain item, click **Always Allow**. With a Developer ID signature this happens only once. Ad-hoc builds ask again after every rebuild.
+- **Keychain prompt:** a Keychain item trusts the app that created it. machen recreates its item from the running build, so with a Developer ID signature it's tied to your team and later builds don't ask again. You may be asked once, when first switching from an ad-hoc build: click **Always Allow**. Ad-hoc builds ask after every rebuild.
 - **Display:** clicking the **Events** heading switches between Today, 2 days, 3 days and Week. In **Settings → Display** you can choose any number of days of events to show (1 to 14) and the row spacing (Compact, Standard or Roomy). When more than one day is shown, events are grouped under day headings. The **Multi-day events** menu sets how events lasting more than a day are handled: show them on every day they cover, show each one once, or exclude them. With **Show on today and start day**, an event running today appears once under Today. An event that starts later in the shown days appears once, on its start day, marked "Starts". (A multi-day event is an all-day event longer than one day, or a timed event lasting 24 hours or more. An overnight event such as 22:00–06:00 doesn't count.)
 - **Text size:** Settings → Display has three size menus, each with Small, Medium (the standard size), Large or Extra Large. They apply to events and tasks alike. **Headings** covers EVENTS and TASKS, the day headings and the list names. **Item names** covers event and task titles. **Item details** covers times, places, notes, due dates, and subtasks.
 - **Tasks filter:** choose **All** or **Due date only**, either in Settings → Display or by clicking the **Tasks** heading in the main screen. With **Due date only**, a parent task without a date stays visible if one of its subtasks has a date.
@@ -101,3 +103,4 @@ The fist in the app icon and the menu bar is [hand-fist](https://fontawesome.com
 | `AgendaView.swift` | The main popover list |
 | `Editors.swift` | Event and task editors |
 | `SettingsViews.swift` | Sign-in and settings screens |
+| `Layout.generated.swift` | Layout constants generated from `Support/layout.json` (don't edit) |

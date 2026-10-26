@@ -7,10 +7,10 @@ struct AgendaView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Layout.List.stackGap) {
                     if let message = store.errorMessage {
                         ErrorBanner(message: message) { store.errorMessage = nil }
-                            .padding(.bottom, 6)
+                            .padding(.bottom, Layout.ErrorBanner.bottomSpace)
                     }
 
                     SectionHeader(title: "Events", count: store.shownEventCount, addHelp: "New event",
@@ -41,7 +41,7 @@ struct AgendaView: View {
                                   mode: store.taskFilter.label,
                                   titleHelp: "Click to show: \(store.taskFilter.next.label)",
                                   onTitleTap: { store.taskFilter = store.taskFilter.next })
-                    .padding(.top, 10)
+                    .padding(.top, Layout.SectionHeading.extraSpaceAboveTasks)
                     if store.taskGroups.isEmpty {
                         EmptyRow(text: store.isLoading ? "Loading…"
                                  : store.taskFilter == .dueOnly ? "No open tasks with a due date" : "No open tasks")
@@ -63,7 +63,7 @@ struct AgendaView: View {
                         }
                     }
                 }
-                .padding(8)
+                .padding(Layout.List.inset)
             }
             Divider()
             footer
@@ -71,7 +71,7 @@ struct AgendaView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Layout.Footer.itemGap) {
             Group {
                 if store.isLoading {
                     ProgressView().controlSize(.mini)
@@ -87,7 +87,7 @@ struct AgendaView: View {
             }
             Spacer()
             Button { route = .settings } label: { Image(systemName: "gearshape") }
-                .padding(.trailing, 6)
+                .padding(.trailing, Layout.Footer.itemGap)
                 .buttonStyle(.borderless)
                 .help("Settings")
             Button { NSApp.terminate(nil) } label: { Image(systemName: "power") }
@@ -96,8 +96,8 @@ struct AgendaView: View {
         }
         .font(.caption)
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Layout.Footer.horizontalPadding)
+        .padding(.vertical, Layout.Footer.verticalPadding)
     }
 
     static func dayLabel(_ day: Date) -> String {
@@ -131,28 +131,28 @@ struct EventRow: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: density.lineGap) {
                 Text(event.title)
-                    .font(sizes.name.font(12))
+                    .font(sizes.name.font(Layout.Text.itemName))
                     .strikethrough(event.declined)
                     .lineLimit(2)
                 Text(timeText)
-                    .font(sizes.detail.font(10))
+                    .font(sizes.detail.font(Layout.Text.detail))
                     .foregroundStyle(.secondary)
                 if !event.location.isEmpty {
                     Text(event.location)
-                        .font(sizes.detail.font(10))
+                        .font(sizes.detail.font(Layout.Text.detail))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
-            .padding(.leading, 10)
+            .padding(.leading, Layout.Bar.textInset)
             .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: Layout.Bar.cornerRadius)
                     .fill(Color(hex: event.color) ?? .accentColor)
-                    .frame(width: 4)
+                    .frame(width: Layout.Bar.width)
             }
         }
         .buttonStyle(RowButtonStyle())
-        .opacity(event.end < Date() || event.declined ? 0.5 : 1)
+        .opacity(event.end < Date() || event.declined ? Layout.Row.pastEventOpacity : 1)
         .help(event.canEdit ? "Edit event" : "Read-only calendar – opens in Google Calendar")
     }
 
@@ -187,7 +187,7 @@ struct TaskRow: View {
 
     var body: some View {
         let sub = task.isSubtask
-        HStack(alignment: .firstTextBaseline, spacing: 7) {
+        HStack(alignment: .firstTextBaseline, spacing: Layout.Task.checkboxGap) {
             Button {
                 checked = true
                 Task {
@@ -196,7 +196,8 @@ struct TaskRow: View {
                 }
             } label: {
                 Image(systemName: checked ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: sub ? sizes.detail.points(12) : sizes.name.points(13)))
+                    .font(.system(size: sub ? sizes.detail.points(Layout.Text.subtaskCheckbox)
+                                            : sizes.name.points(Layout.Text.taskCheckbox)))
                     .foregroundStyle(checked ? Color.accentColor : Color.secondary)
             }
             .buttonStyle(.plain)
@@ -205,7 +206,7 @@ struct TaskRow: View {
             Button(action: action) {
                 VStack(alignment: .leading, spacing: density.lineGap) {
                     Text(task.title.isEmpty ? "(No title)" : task.title)
-                        .font(sub ? sizes.detail.font(11) : sizes.name.font(12))
+                        .font(sub ? sizes.detail.font(Layout.Text.subtaskName) : sizes.name.font(Layout.Text.itemName))
                         .strikethrough(checked)
                         .lineLimit(2)
                     if !task.notes.isEmpty {
@@ -218,7 +219,7 @@ struct TaskRow: View {
                         Text(label.text).foregroundStyle(label.color)
                     }
                 }
-                .font(sizes.detail.font(10))
+                .font(sizes.detail.font(Layout.Text.detail))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
@@ -229,20 +230,23 @@ struct TaskRow: View {
                 Button(action: onToggleSubtasks) {
                     DisclosureLabel(count: subtaskCount, collapsed: subtasksCollapsed, size: sizes.detail)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, Layout.Task.disclosurePadding)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help(subtasksCollapsed ? "Show subtasks" : "Hide subtasks")
             }
         }
-        .padding(.leading, sub ? 28 : 10)
+        .padding(.leading, sub ? Layout.Bar.subtaskInset : Layout.Bar.textInset)
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(color.opacity(sub ? 0.5 : 1))
-                .frame(width: 4)
+            RoundedRectangle(cornerRadius: Layout.Bar.cornerRadius)
+                .fill(color.opacity(sub ? Layout.Bar.subtaskOpacity : 1))
+                .frame(width: Layout.Bar.width)
         }
-        .modifier(RowChrome(paddingScale: sub ? 0.5 : 1))
+        // Subtasks sit close together and close to their parent
+        .modifier(RowChrome(topScale: sub ? Layout.Row.subtaskTopShare : 1,
+                            bottomScale: sub ? Layout.Row.subtaskBottomShare
+                                : (subtaskCount > 0 && !subtasksCollapsed ? Layout.Row.openParentBottomShare : 1)))
     }
 
     static func dueLabel(_ due: Date) -> (text: String, color: Color) {
@@ -288,21 +292,21 @@ struct SectionHeader: View {
                 .buttonStyle(.borderless)
                 .help(addHelp)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
+        .padding(.horizontal, Layout.SectionHeading.horizontalPadding)
+        .padding(.vertical, Layout.SectionHeading.verticalPadding)
     }
 
     private var titleLabel: some View {
         HStack(spacing: 6) {
             Text(title.uppercased())
-                .font(sizes.heading.font(12, weight: .semibold))
+                .font(sizes.heading.font(Layout.Text.heading, weight: .semibold))
             if count > 0 {
                 Text("\(count)")
-                    .font(sizes.heading.font(12))
+                    .font(sizes.heading.font(Layout.Text.heading))
             }
             if let mode {
                 Text("· \(mode)")
-                    .font(sizes.heading.font(12))
+                    .font(sizes.heading.font(Layout.Text.heading))
             }
         }
         .foregroundStyle(.secondary)
@@ -316,8 +320,8 @@ struct EmptyRow: View {
         Text(text)
             .font(.callout)
             .foregroundStyle(.tertiary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
+            .padding(.horizontal, Layout.EmptyRow.horizontalPadding)
+            .padding(.vertical, Layout.EmptyRow.verticalPadding)
     }
 }
 
@@ -365,23 +369,24 @@ struct GroupHeader: View {
                 .buttonStyle(.borderless)
                 .help(addHelp)
         }
-        .padding(.horizontal, 6)
-        .padding(.top, 6)
+        .padding(.horizontal, Layout.GroupHeading.horizontalPadding)
+        .padding(.top, Layout.GroupHeading.topPadding)
+        .padding(.bottom, Layout.GroupHeading.bottomPadding)
     }
 
     private var titleLabel: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Layout.GroupHeading.dotGap) {
             if let color {
                 Circle()
                     .fill(color)
-                    .frame(width: 7, height: 7)
+                    .frame(width: Layout.GroupHeading.dotSize, height: Layout.GroupHeading.dotSize)
             }
             Text(title)
-                .font(sizes.heading.font(12, weight: .medium))
+                .font(sizes.heading.font(Layout.Text.heading, weight: .medium))
                 .lineLimit(1)
             if let isCollapsed {
                 DisclosureLabel(count: isCollapsed ? hiddenCount : nil, collapsed: isCollapsed,
-                                size: sizes.heading, base: 12)
+                                size: sizes.heading, base: Layout.Text.heading)
             }
         }
         .foregroundStyle(.secondary)
@@ -394,15 +399,15 @@ struct DisclosureLabel: View {
     let collapsed: Bool
     var size = TextSize.medium
     /// Point size of the text it sits next to at Medium; the arrow is a bit smaller.
-    var base: CGFloat = 10
+    var base = Layout.Text.detail
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: Layout.Disclosure.countGap) {
             if let count, count > 0 {
                 Text("\(count)").font(size.font(base))
             }
             Image(systemName: collapsed ? "chevron.right" : "chevron.down")
-                .font(.system(size: size.points(base * 0.8), weight: .bold))
+                .font(.system(size: size.points(base * Layout.Disclosure.arrowShare), weight: .bold))
         }
     }
 }
@@ -416,25 +421,30 @@ struct RowButtonStyle: ButtonStyle {
 /// Shared row padding and hover highlight.
 struct RowChrome: ViewModifier {
     let pressed: Bool
-    /// Fraction of the spacing setting's row padding to use; subtask rows use less.
-    let paddingScale: CGFloat
+    /// Fractions of the spacing setting's row padding to use above and below; subtask rows,
+    /// and parents with their subtasks showing, use less.
+    let topScale: CGFloat
+    let bottomScale: CGFloat
     @Environment(\.rowDensity) private var density
     @ViewState private var hovering = false
 
-    init(pressed: Bool = false, paddingScale: CGFloat = 1) {
+    init(pressed: Bool = false, topScale: CGFloat = 1, bottomScale: CGFloat = 1) {
         self.pressed = pressed
-        self.paddingScale = paddingScale
+        self.topScale = topScale
+        self.bottomScale = bottomScale
     }
 
     func body(content: Content) -> some View {
         content
             .lineSpacing(density.lineSpacing)
-            .padding(.vertical, density.rowPadding * paddingScale)
-            .padding(.horizontal, 6)
+            .padding(.top, density.rowPadding * topScale)
+            .padding(.bottom, density.rowPadding * bottomScale)
+            .padding(.horizontal, Layout.Row.horizontalPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.primary.opacity(pressed ? 0.12 : hovering ? 0.06 : 0))
+                RoundedRectangle(cornerRadius: Layout.Row.hoverCornerRadius)
+                    .fill(Color.primary.opacity(pressed ? Layout.Row.pressedOpacity
+                                                : hovering ? Layout.Row.hoverOpacity : 0))
             )
             .contentShape(Rectangle())
             .onHover { hovering = $0 }

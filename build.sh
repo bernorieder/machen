@@ -1,6 +1,8 @@
 #!/bin/bash
 # Builds machen.app into ./build
 #
+# Layout: spacing, sizes and fonts come from Support/layout.json, turned into Swift on every build.
+#
 # Google sign-in: copy Support/Config.example.plist to Support/Config.local.plist (gitignored)
 # and fill in your "Desktop app" OAuth client to build it into the app. Without it, users
 # enter their own client on first launch.
@@ -10,6 +12,9 @@
 # Override with SIGN_IDENTITY="..." ./build.sh
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# Layout values: Support/layout.json → Sources/machen/Layout.generated.swift
+swift Support/make-layout.swift Support/layout.json Sources/machen/Layout.generated.swift
 
 swift build -c release
 

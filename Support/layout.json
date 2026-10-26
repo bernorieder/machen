@@ -1,0 +1,83 @@
+{
+  "_about": "Layout values for machen, in points unless noted. build.sh turns this file into Sources/machen/Layout.generated.swift; rebuild to apply changes. Keys starting with _ are comments.",
+
+  "popover": { "width": 360, "height": 540 },
+
+  "list": {
+    "_about": "The scrolling list of events and tasks",
+    "inset": 8,
+    "stackGap": 2
+  },
+
+  "spacing": {
+    "_about": "Settings → Display → Spacing presets",
+    "rowPadding": { "_about": "Above and below each event/task row", "compact": 2, "standard": 5, "roomy": 9 },
+    "lineGap": { "_about": "Between a row's lines: title, time, place, notes, due date", "compact": 0, "standard": 1.5, "roomy": 3 },
+    "lineSpacing": { "_about": "Extra leading when a title wraps", "compact": 0, "standard": 1, "roomy": 3 }
+  },
+
+  "row": {
+    "horizontalPadding": 6,
+    "subtaskTopShare": 0.5,
+    "subtaskBottomShare": 0.5,
+    "openParentBottomShare": 0.2,
+    "_shares": "Shares multiply the Spacing preset's row padding. openParentBottomShare: below a task whose subtasks are showing.",
+    "hoverCornerRadius": 6,
+    "hoverOpacity": 0.06,
+    "pressedOpacity": 0.12,
+    "pastEventOpacity": 0.5
+  },
+
+  "sectionHeading": {
+    "_about": "EVENTS and TASKS",
+    "verticalPadding": 4,
+    "horizontalPadding": 6,
+    "extraSpaceAboveTasks": 10
+  },
+
+  "groupHeading": {
+    "_about": "Day headings and list names",
+    "topPadding": 6,
+    "bottomPadding": 5,
+    "horizontalPadding": 6,
+    "dotSize": 7,
+    "dotGap": 6
+  },
+
+  "bar": {
+    "_about": "Colour bar at the left of events and tasks",
+    "width": 4,
+    "cornerRadius": 2,
+    "textInset": 10,
+    "subtaskInset": 28,
+    "subtaskOpacity": 0.5
+  },
+
+  "task": {
+    "checkboxGap": 7,
+    "disclosurePadding": 4
+  },
+
+  "disclosure": {
+    "_about": "Count and arrow, as in 'Work 5 ›' and '2 ▾'",
+    "countGap": 3,
+    "arrowShare": 0.8
+  },
+
+  "emptyRow": { "verticalPadding": 4, "horizontalPadding": 6 },
+  "errorBanner": { "bottomSpace": 6 },
+  "footer": { "horizontalPadding": 12, "verticalPadding": 8, "itemGap": 6 },
+
+  "text": {
+    "_about": "Font sizes at Medium. Settings → Display → Small … Extra Large multiply them by the factors below, rounded to whole points.",
+    "heading": 12,
+    "itemName": 12,
+    "taskCheckbox": 13,
+    "subtaskName": 11,
+    "subtaskCheckbox": 12,
+    "detail": 10,
+    "factors": { "small": 0.9, "medium": 1, "large": 1.15, "extraLarge": 1.3 }
+  },
+
+  "menuBar": { "fistHeight": 14 }
+}

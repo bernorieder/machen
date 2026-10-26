@@ -100,6 +100,9 @@ enum Keychain {
         return out as? Data
     }
 
+    /// Updates the item in place, which any build may do silently. Deleting and re-adding it would
+    /// need the item's owner permission, which always asks. (An item belongs to the app that created
+    /// it; one created by a Developer ID build is tied to the team, so later builds can read it.)
     static func set(_ data: Data, for account: String) {
         let status = SecItemUpdate(query(account) as CFDictionary,
                                    [kSecValueData as String: data] as CFDictionary)
@@ -194,8 +197,9 @@ enum MenuBarIcon {
     private static let fistImage: NSImage? = {
         guard let url = Bundle.main.url(forResource: "hand-fist", withExtension: "svg"),
               let image = NSImage(contentsOf: url) else { return nil }
-        // 14 pt tall: a solid glyph looks heavier than the outline SF Symbols at the same size
-        image.size = NSSize(width: 14 * image.size.width / image.size.height, height: 14)
+        // A solid glyph looks heavier than the outline SF Symbols, so it's a bit smaller than them
+        let height = Layout.MenuBar.fistHeight
+        image.size = NSSize(width: height * image.size.width / image.size.height, height: height)
         image.isTemplate = true
         return image
     }()
@@ -237,27 +241,27 @@ enum RowDensity: String, CaseIterable, Identifiable {
 
     var rowPadding: CGFloat {
         switch self {
-        case .compact: 2
-        case .standard: 5
-        case .roomy: 9
+        case .compact: Layout.Spacing.RowPadding.compact
+        case .standard: Layout.Spacing.RowPadding.standard
+        case .roomy: Layout.Spacing.RowPadding.roomy
         }
     }
 
     /// Gap between the title, notes and date lines of one row.
     var lineGap: CGFloat {
         switch self {
-        case .compact: 0
-        case .standard: 1.5
-        case .roomy: 3
+        case .compact: Layout.Spacing.LineGap.compact
+        case .standard: Layout.Spacing.LineGap.standard
+        case .roomy: Layout.Spacing.LineGap.roomy
         }
     }
 
     /// Extra leading for text that wraps onto several lines.
     var lineSpacing: CGFloat {
         switch self {
-        case .compact: 0
-        case .standard: 1
-        case .roomy: 3
+        case .compact: Layout.Spacing.LineSpacing.compact
+        case .standard: Layout.Spacing.LineSpacing.standard
+        case .roomy: Layout.Spacing.LineSpacing.roomy
         }
     }
 }
@@ -289,10 +293,10 @@ enum TextSize: String, CaseIterable, Identifiable {
 
     private var scale: CGFloat {
         switch self {
-        case .small: 0.9
-        case .medium: 1
-        case .large: 1.15
-        case .extraLarge: 1.3
+        case .small: Layout.Text.Factors.small
+        case .medium: Layout.Text.Factors.medium
+        case .large: Layout.Text.Factors.large
+        case .extraLarge: Layout.Text.Factors.extraLarge
         }
     }
 
@@ -304,10 +308,10 @@ enum TextSize: String, CaseIterable, Identifiable {
     }
 }
 
-/// The three text sizes from Settings, shared by events and tasks:
-/// - `heading`: EVENTS / TASKS, day headings and list names (12 pt at Medium)
-/// - `name`: event and task titles (12 pt)
-/// - `detail`: times, places, notes, due dates, and subtasks (10 pt; subtask titles 11 pt)
+/// The three text sizes from Settings, shared by events and tasks (base sizes in Layout.Text):
+/// - `heading`: EVENTS / TASKS, day headings and list names
+/// - `name`: event and task titles
+/// - `detail`: times, places, notes, due dates, and subtasks
 struct TextSizes: Equatable {
     var heading = TextSize.medium
     var name = TextSize.medium

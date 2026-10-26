@@ -53,7 +53,7 @@ struct RootView: View {
                 }
             }
         }
-        .frame(width: 360, height: 540)
+        .frame(width: Layout.Popover.width, height: Layout.Popover.height)
         .environment(\.rowDensity, store.density)
         .environment(\.textSizes, store.textSizes)
         .task { await store.refreshIfStale() }

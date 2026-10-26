@@ -85,6 +85,9 @@ enum Sync {
 final class Store: ObservableObject {
     /// Today; events are shown for `eventDays` days from here. Rolls over at midnight.
     @Published private(set) var day = Date().startOfDay
+    /// The time the list was last checked against; events that ended before it are hidden.
+    /// Updated every minute and when the panel opens.
+    @Published private(set) var now = Date()
     static let eventDayRange = 1...14
     /// Values the Events heading steps through when clicked.
     static let eventDayCycle = [1, 2, 3, 7]
@@ -269,8 +272,9 @@ final class Store: ObservableObject {
         return events.filter { shown.contains($0.calendarID) }
     }
 
+    /// Events still to come or under way, by day. Finished ones are left out.
     var eventsByDay: [EventDay] {
-        EventDay.group(shownEvents, from: day, days: eventDays, multiDay: multiDayMode)
+        EventDay.group(shownEvents.filter { $0.end > now }, from: day, days: eventDays, multiDay: multiDayMode)
     }
 
     /// Number of distinct events shown, counting a repeated multi-day event once.
@@ -405,6 +409,7 @@ final class Store: ObservableObject {
 
     /// Every minute: events near today, and everything every few minutes.
     private func tick() async {
+        now = Date()
         rollOverDay()
         guard loadCount == 0 else { return }
         if fullSyncDue { await refresh() } else { await refreshEvents() }
@@ -427,6 +432,7 @@ final class Store: ObservableObject {
     /// Opening the panel refreshes events and tasks (or everything, if that's due) while the
     /// loaded data shows, unless something was refreshed moments ago.
     func refreshOnOpen() async {
+        now = Date()
         guard auth.isSignedIn, loadCount == 0,
               lastSync.map({ Date().timeIntervalSince($0) >= Sync.openThreshold }) ?? true else { return }
         if fullSyncDue { return await refresh() }

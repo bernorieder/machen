@@ -188,7 +188,7 @@ struct EventRow: View {
                 .frame(width: Layout.Bar.width)
         }
         .modifier(RowChrome())
-        .opacity(event.end < Date() || event.declined ? Layout.Row.pastEventOpacity : 1)
+        .opacity(event.declined ? Layout.Row.declinedEventOpacity : 1)
     }
 
     private var timeText: String {

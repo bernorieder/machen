@@ -49,11 +49,11 @@ enum Layout {
         static let width: CGFloat = 360.0
     }
     enum Row {
+        static let declinedEventOpacity: CGFloat = 0.5
         static let horizontalPadding: CGFloat = 6.0
         static let hoverCornerRadius: CGFloat = 6.0
         static let hoverOpacity: CGFloat = 0.06
         static let openParentBottomShare: CGFloat = 0.2
-        static let pastEventOpacity: CGFloat = 0.5
         static let subtaskBottomShare: CGFloat = 0.5
         static let subtaskTopShare: CGFloat = 0.5
     }

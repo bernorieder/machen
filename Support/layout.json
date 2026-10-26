@@ -27,7 +27,7 @@
     "_shares": "Shares multiply the Spacing preset's row padding. openParentBottomShare: below a task whose subtasks are showing.",
     "hoverCornerRadius": 6,
     "hoverOpacity": 0.06,
-    "pastEventOpacity": 0.5
+    "declinedEventOpacity": 0.5
   },
 
   "sectionHeading": {

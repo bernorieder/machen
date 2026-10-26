@@ -3,7 +3,11 @@ import ServiceManagement
 
 struct SignInView: View {
     @EnvironmentObject private var auth: GoogleAuth
+    @EnvironmentObject private var accounts: Accounts
     @ViewState private var error: String?
+
+    /// Accounts whose session expired, when none is signed in.
+    private var signedOut: [AccountState] { accounts.states.filter { !$0.isActive } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -13,12 +17,14 @@ struct SignInView: View {
                     .frame(width: 36, height: 36)
                 Text("machen").font(.title2.bold())
             }
-            Text("Connect your Google account to see your upcoming events and open tasks.")
+            Text("Connect your Google account to see your upcoming events and open tasks. You can add more accounts later in Settings → Sources.")
                 .foregroundStyle(.secondary)
-            if let message = auth.sessionMessage {
-                Text(message)
+                .fixedSize(horizontal: false, vertical: true)
+            if let account = signedOut.first {
+                Text("The Google session of \(account.name) expired. Please sign in again.")
                     .font(.callout)
                     .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if !auth.hasBundledClient {
                 Text("This build has no Google client built in. You need an OAuth client of type “Desktop app” from Google Cloud Console, with the Google Calendar API and Google Tasks API enabled. The README walks through it.")
@@ -44,7 +50,8 @@ struct SignInView: View {
                     error = nil
                     Task {
                         do {
-                            try await auth.signIn()
+                            // An expired account is offered first in the browser
+                            try await accounts.signInToGoogle(renewing: signedOut.first?.id)
                         } catch is CancellationError {
                         } catch {
                             self.error = error.localizedDescription
@@ -88,11 +95,13 @@ enum SettingsPanel: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @EnvironmentObject private var auth: GoogleAuth
+    @EnvironmentObject private var accounts: Accounts
     @EnvironmentObject private var store: Store
     @ViewState private var panel: SettingsPanel
     /// Read when Settings appears (querying it on every redraw would be wasteful).
     @ViewState private var launchStatus = SMAppService.Status.notRegistered
     @ViewState private var launchError: String?
+    @ViewState private var signInError: String?
     let onClose: () -> Void
 
     init(panel: SettingsPanel = .general, onClose: @escaping () -> Void) {
@@ -152,7 +161,7 @@ struct SettingsView: View {
         launchStatus = SMAppService.mainApp.status
     }
 
-    // MARK: General: what's shown, app behaviour, links, account
+    // MARK: General: what's shown, app behaviour, links
 
     private var general: some View {
         Form {
@@ -229,18 +238,57 @@ struct SettingsView: View {
                 Link("Fist icon: Font Awesome Free (CC BY 4.0)",
                      destination: URL(string: "https://fontawesome.com/license/free")!)
             }
-            Section("Account") {
-                Button("Sign Out of Google") { auth.signOut() }
+            Section {
                 Button("Quit machen") { NSApp.terminate(nil) }
             }
         }
         .formStyle(.grouped)
     }
 
-    // MARK: Sources: which calendars and task lists, their order and list colours
+    // MARK: Sources: accounts; which calendars and task lists, their order and list colours
+
+    private func signIn(renewing accountID: String? = nil) {
+        signInError = nil
+        Task {
+            do {
+                try await accounts.signInToGoogle(renewing: accountID)
+            } catch is CancellationError {
+            } catch {
+                signInError = error.localizedDescription
+            }
+        }
+    }
+
+    /// The account a calendar or list belongs to, shown below its name when there are several.
+    private func accountName(_ accountID: String) -> String? {
+        accounts.states.count > 1 ? accounts.state(accountID)?.name : nil
+    }
 
     private var sources: some View {
         Form {
+            Section("Accounts") {
+                ForEach(accounts.states) { account in
+                    AccountRow(account: account, busy: auth.isSigningIn,
+                               onSignIn: { signIn(renewing: account.id) },
+                               onRemove: { accounts.remove(account.id) })
+                }
+                if auth.isSigningIn {
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text("Finish signing in in your browser…")
+                        Spacer()
+                        Button("Cancel") { auth.cancelSignIn() }
+                    }
+                } else {
+                    Button { signIn() } label: { Label("Add Google Account", systemImage: "plus") }
+                }
+                if let signInError {
+                    Text(signInError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                }
+            }
             Section {
                 let calendars = store.calendars
                 ForEach(Array(calendars.enumerated()), id: \.element.id) { index, cal in
@@ -250,10 +298,12 @@ struct SettingsView: View {
                                    ? { store.moveCalendar(cal.id, onto: calendars[index + 1].id) } : nil) {
                         // The calendar's colour comes from Google Calendar. The padding lines it up
                         // with the list colours below, which are menus with a little padding of their own.
-                        Image(nsImage: ListPalette.swatch(cal.backgroundColor ?? "#888888"))
+                        Image(nsImage: ListPalette.swatch(cal.color ?? "#888888"))
                             .padding(.horizontal, 3)
                             .accessibilityHidden(true)
-                        Toggle(cal.name, isOn: Binding(get: { store.isShown(cal) }, set: { store.setShown(cal, $0) }))
+                        Toggle(isOn: Binding(get: { store.isShown(cal) }, set: { store.setShown(cal, $0) })) {
+                            SourceLabel(name: cal.name, account: accountName(cal.accountID))
+                        }
                     }
                 }
             } header: {
@@ -286,7 +336,9 @@ struct SettingsView: View {
                         .fixedSize()
                         .help("Choose colour")
                         .accessibilityLabel("Colour of \(list.title)")
-                        Toggle(list.title, isOn: Binding(get: { store.isShown(list) }, set: { store.setShown(list, $0) }))
+                        Toggle(isOn: Binding(get: { store.isShown(list) }, set: { store.setShown(list, $0) })) {
+                            SourceLabel(name: list.title, account: accountName(list.accountID))
+                        }
                     }
                 }
             } header: {
@@ -336,6 +388,73 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// An account in Settings → Sources, with buttons to sign in to it again and to remove it.
+struct AccountRow: View {
+    let account: AccountState
+    /// Signing in to an account is under way.
+    let busy: Bool
+    let onSignIn: () -> Void
+    let onRemove: () -> Void
+    /// Inline confirmation (alerts and dialogs tend to dismiss menu bar windows).
+    @ViewState private var confirming = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "person.crop.circle")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(account.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(status)
+                    .font(.caption)
+                    .foregroundStyle(account.isActive || confirming ? Color.secondary : Color.orange)
+            }
+            Spacer()
+            Group {
+                if confirming {
+                    Button("Cancel") { confirming = false }
+                    Button("Remove", role: .destructive, action: onRemove)
+                } else {
+                    if !account.isActive {
+                        Button("Sign In Again", action: onSignIn)
+                            .disabled(busy)
+                    }
+                    Button("Remove") { confirming = true }
+                        .help("Signs machen out of this account and removes its calendars and task lists")
+                }
+            }
+            .controlSize(.small)
+        }
+    }
+
+    private var status: String {
+        if confirming { return "Remove this account from machen?" }
+        return account.isActive ? "Google" : "Signed out"
+    }
+}
+
+/// A calendar's or task list's name, with its account below when there are several accounts.
+struct SourceLabel: View {
+    let name: String
+    let account: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(name)
+            if let account {
+                Text(account)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
     }
 }
 

@@ -34,6 +34,8 @@ struct EventDay: Identifiable {
 
 struct TaskGroup: Identifiable {
     let list: TaskListInfo
+    /// The list's title as shown, with its account's name when another list has the same title.
+    let title: String
     let color: Color
     /// Every task that passes the filter, each parent followed by its subtasks.
     let tasks: [TaskItem]
@@ -49,12 +51,13 @@ struct TaskGroup: Identifiable {
 /// Tasks completed in one go (a parent with its subtasks), kept briefly so it can be undone.
 struct CompletedTasks: Identifiable, Equatable {
     let id = UUID()
+    let accountID: String
     let listID: String
     let taskIDs: [String]
     let title: String
 }
 
-/// When machen talks to Google. Each events request costs one request per shown calendar;
+/// When machen syncs. Each events request costs one Google request per shown calendar;
 /// Google's default quota is 1 million Calendar requests a day per app (shared by all users),
 /// and far fewer for Tasks, so tasks and lists refresh less often.
 enum Sync {
@@ -70,9 +73,6 @@ enum Sync {
     /// How far ahead the full sync loads events while notifications are on, for reminders like
     /// "1 week before". Google allows reminders up to 4 weeks before an event.
     static let reminderWindowDays = 28
-    /// The event fields machen uses. Asking for just these keeps responses small (no guest lists).
-    static let eventFields = "items(id,status,summary,description,location,start,end,attendees(self,responseStatus),"
-        + "reminders,hangoutLink,conferenceData(entryPoints(entryPointType,uri)),recurringEventId,colorId,htmlLink),nextPageToken"
     /// After waking from sleep, wait this long for the network before refreshing.
     static let wakeDelay: TimeInterval = 5
     /// After the number of days changes, wait this long before loading more, so several clicks
@@ -80,7 +80,8 @@ enum Sync {
     static let daysChangeDelay: TimeInterval = 0.4
 }
 
-/// Holds the synced calendar and task data and performs edits against Google.
+/// Holds the synced calendar and task data of all accounts, and sends edits to the account they
+/// belong to.
 @MainActor
 final class Store: ObservableObject {
     /// Today; events are shown for `eventDays` days from here. Rolls over at midnight.
@@ -112,8 +113,8 @@ final class Store: ObservableObject {
             if daysToLoad > loadedDays { loadMoreDaysSoon() }
         }
     }
-    /// Calendars (primary first, then by name) and task lists as loaded; `calendars` and
-    /// `taskLists` apply the custom order.
+    /// Calendars and task lists as loaded, by account (each account's calendars primary first,
+    /// then by name); `calendars` and `taskLists` apply the custom order.
     @Published private var fetchedCalendars: [CalendarInfo] = []
     /// Events from `day` for `loadedDays` days, of the calendars shown when they were loaded.
     @Published private(set) var events: [CalendarEvent] = []
@@ -139,6 +140,8 @@ final class Store: ObservableObject {
     @Published private(set) var notificationsBlocked = false
 
     /// Per-calendar / per-list visibility chosen in Settings; keys are "cal:<id>" and "list:<id>".
+    /// Ids here and in the settings below are `CalendarInfo.id` and `TaskListInfo.id`, which
+    /// start with the account's id.
     @Published private var visibility: [String: Bool] {
         didSet { UserDefaults.standard.set(visibility, forKey: "visibility") }
     }
@@ -194,12 +197,16 @@ final class Store: ObservableObject {
         didSet { UserDefaults.standard.set(listColors, forKey: "listColors") }
     }
 
-    let auth: GoogleAuth
-    private let api: GoogleAPI
+    let accounts: Accounts
     // Kept for the app's lifetime
     private var timer: Timer?
     private var wakeObserver: NSObjectProtocol?
-    private var signInObserver: AnyCancellable?
+    private var accountsObserver: AnyCancellable?
+    /// The accounts as last handled, to tell which were added, removed, signed out or signed in again.
+    private var knownAccounts: [AccountState]
+    /// A refresh of everything was asked for while another refresh ran (for example for a newly
+    /// connected account); it follows as soon as that one ends.
+    private var fullRefreshPending = false
     /// Last time everything (not just events) was refreshed, successfully or not.
     private var lastFullSync: Date?
     /// Number of days from `day` that `events` covers.
@@ -214,9 +221,10 @@ final class Store: ObservableObject {
         didSet { isLoading = loadCount > 0 }
     }
 
-    init(auth: GoogleAuth) {
-        self.auth = auth
-        api = GoogleAPI(auth: auth)
+    init(accounts: Accounts) {
+        self.accounts = accounts
+        knownAccounts = accounts.states
+        if let id = accounts.legacyAccountID { Store.moveSettings(toAccount: id) }
         visibility = UserDefaults.standard.dictionary(forKey: "visibility") as? [String: Bool] ?? [:]
         listColors = UserDefaults.standard.dictionary(forKey: "listColors") as? [String: String] ?? [:]
         collapsed = Set(UserDefaults.standard.stringArray(forKey: "collapsed") ?? [])
@@ -244,12 +252,10 @@ final class Store: ObservableObject {
                 await self?.refreshAfterWake()
             }
         }
-        // Signing in and out (including an expired session) is handled here rather than in a
-        // view, because the panel's views only exist once it has been opened.
-        signInObserver = auth.$isSignedIn.dropFirst().removeDuplicates().sink { [weak self] signedIn in
-            Task { @MainActor in
-                if signedIn { await self?.refresh() } else { self?.clear() }
-            }
+        // Accounts being added, removed or signed out are handled here rather than in a view,
+        // because the panel's views only exist once it has been opened.
+        accountsObserver = accounts.$states.dropFirst().removeDuplicates().sink { [weak self] _ in
+            Task { @MainActor in self?.accountsChanged() }
         }
         // Set up notifications early, so clicking "Join" in one that launches machen works
         _ = Notifier.shared
@@ -258,7 +264,9 @@ final class Store: ObservableObject {
         loadCache()
         // Separate tasks: the first scheduling may wait for an answer to macOS's notification prompt
         Task { await scheduleReminders() }
+        #if !SCREENSHOTS
         Task { await refresh() }
+        #endif
     }
 
     // MARK: Derived state
@@ -306,22 +314,48 @@ final class Store: ObservableObject {
         customOrder["lists"] = ids
     }
 
+    private func calendar(_ id: String) -> CalendarInfo? { fetchedCalendars.first { $0.id == id } }
+    private func taskList(_ id: String) -> TaskListInfo? { fetchedTaskLists.first { $0.id == id } }
+    private func isActive(_ accountID: String) -> Bool { accounts.state(accountID)?.isActive == true }
+
     private func sortedEvents(_ events: [CalendarEvent]) -> [CalendarEvent] {
         let rank = Dictionary(calendars.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
         return events.sorted(by: CalendarEvent.order(calendarRank: rank))
     }
 
-    var writableCalendars: [CalendarInfo] { calendars.filter(\.canEdit) }
-    var defaultCalendarID: String? {
-        writableCalendars.first(where: { $0.primary == true })?.id ?? writableCalendars.first?.id
+    /// Calendars new events can go in, of accounts that are signed in.
+    private var writableCalendars: [CalendarInfo] { calendars.filter { $0.canEdit && isActive($0.accountID) } }
+    private var defaultCalendarID: String? {
+        writableCalendars.first(where: \.isPrimary)?.id ?? writableCalendars.first?.id
     }
     var showsListNames: Bool { taskLists.filter(isShown).count > 1 }
+
+    /// Calendars an event can be saved in, by account: any writable one for a new event, and for
+    /// an existing one only those of its own account (Google can't move events between accounts).
+    func calendarChoices(for d: EventDraft) -> [AccountGroup<CalendarInfo>] {
+        let home = d.isNew ? nil : calendar(d.originalCalendarID ?? d.calendarID)?.accountID
+        return byAccount(writableCalendars.filter { home == nil || $0.accountID == home }, account: \.accountID)
+    }
+
+    /// Lists a new task can go in, by account.
+    var taskListChoices: [AccountGroup<TaskListInfo>] {
+        byAccount(taskLists.filter { isActive($0.accountID) }, account: \.accountID)
+    }
+
+    private func byAccount<T: Identifiable>(_ items: [T], account: (T) -> String) -> [AccountGroup<T>] {
+        accounts.states.compactMap { state in
+            let own = items.filter { account($0) == state.id }
+            return own.isEmpty ? nil : AccountGroup(id: state.id, name: state.name, items: own)
+        }
+    }
 
     /// Tasks of the shown lists, grouped by list in the custom order; empty lists are left out.
     var taskGroups: [TaskGroup] {
         let lists = taskLists.filter(isShown)
         // Lists can only be collapsed while their headings are shown
         let headingsShown = lists.count > 1
+        // Every Google account has a "My Tasks", for example
+        let titleCounts = Dictionary(grouping: lists, by: \.title).mapValues(\.count)
         return lists.compactMap { list in
             let inList = tasks.filter { $0.listID == list.id }
             let items = taskFilter == .dueOnly ? TaskItem.withDueDates(inList) : inList
@@ -331,7 +365,9 @@ final class Store: ObservableObject {
                 !(task.isSubtask && collapsed.contains(Self.taskKey(list.id, task.parentID ?? "")))
             }
             let counts = Dictionary(grouping: items.filter(\.isSubtask)) { $0.parentID ?? "" }.mapValues(\.count)
-            return TaskGroup(list: list, color: color(for: list), tasks: items, visibleTasks: visible,
+            let title = (titleCounts[list.title] ?? 0) > 1
+                ? "\(list.title) · \(accounts.state(list.accountID)?.shortName ?? "")" : list.title
+            return TaskGroup(list: list, title: title, color: color(for: list), tasks: items, visibleTasks: visible,
                              isCollapsed: listCollapsed, subtaskCounts: counts)
         }
     }
@@ -366,7 +402,11 @@ final class Store: ObservableObject {
         listColors[list.id] = hex
     }
 
-    func isShown(_ c: CalendarInfo) -> Bool { visibility["cal:" + c.id] ?? (c.selected == true) }
+    /// A calendar that an earlier account has too (a shared or a holiday calendar) starts hidden,
+    /// so its events don't show twice.
+    func isShown(_ c: CalendarInfo) -> Bool {
+        visibility["cal:" + c.id] ?? (c.shownByDefault && fetchedCalendars.first { $0.remoteID == c.remoteID }?.id == c.id)
+    }
     func isShown(_ l: TaskListInfo) -> Bool { visibility["list:" + l.id] ?? true }
 
     /// Hiding filters what's loaded; showing a calendar loads its events.
@@ -391,7 +431,8 @@ final class Store: ObservableObject {
     }
 
     func newTaskDraft() -> TaskDraft? {
-        (taskLists.first(where: isShown) ?? taskLists.first).map { TaskDraft(listID: $0.id, day: day) }
+        let lists = taskLists.filter { isActive($0.accountID) }
+        return (lists.first(where: isShown) ?? lists.first).map { TaskDraft(listID: $0.id, day: day) }
     }
 
     // MARK: Sync
@@ -433,25 +474,30 @@ final class Store: ObservableObject {
     /// loaded data shows, unless something was refreshed moments ago.
     func refreshOnOpen() async {
         now = Date()
-        guard auth.isSignedIn, loadCount == 0,
+        guard accounts.hasActiveAccount, loadCount == 0,
               lastSync.map({ Date().timeIntervalSince($0) >= Sync.openThreshold }) ?? true else { return }
         if fullSyncDue { return await refresh() }
         loadCount += 1
         async let nearEvents = nearEventsStep()
         async let openTasks = tasksStep()
-        let results = await [nearEvents, openTasks]
+        let results = await nearEvents + openTasks
         loadCount -= 1
         await finishSync(results)
     }
 
     /// Everything. Calendars with their events, and task lists with their tasks, load side by
-    /// side and independently, so a problem with one doesn't hold up the other.
+    /// side and independently, so a problem with one doesn't hold up the other; so do accounts.
     func refresh() async {
-        guard auth.isSignedIn, loadCount == 0 else { return }
+        guard accounts.hasActiveAccount else { return }
+        guard loadCount == 0 else {
+            fullRefreshPending = true
+            return
+        }
+        fullRefreshPending = false
         loadCount += 1
         async let calendarsAndEvents = calendarsAndEventsStep()
         async let listsAndTasks = listsAndTasksStep()
-        let results = await [calendarsAndEvents, listsAndTasks]
+        let results = await calendarsAndEvents + listsAndTasks
         loadCount -= 1
         // Counted even after a failure, so a failing Tasks API doesn't make every tick a full sync
         lastFullSync = Date()
@@ -472,52 +518,71 @@ final class Store: ObservableObject {
         await run(tasksStep)
     }
 
-    private func run(_ step: () async -> Error?) async {
-        guard auth.isSignedIn else { return }
+    private func run(_ step: () async -> [Error?]) async {
+        guard accounts.hasActiveAccount else { return }
         loadCount += 1
-        let result = await step()
+        let results = await step()
         loadCount -= 1
-        await finishSync([result])
+        await finishSync(results)
     }
 
-    // The steps a refresh is made of; each reports its error instead of throwing, so that
-    // steps running side by side don't stop each other.
+    // The steps a refresh is made of. Each reports one result per account (nil when it worked)
+    // instead of throwing, so that steps and accounts running side by side don't stop each other.
 
-    private func calendarsAndEventsStep() async -> Error? {
-        await attempt {
-            let calendars = try await fetchCalendars()
-            if calendars != fetchedCalendars { fetchedCalendars = calendars }
-            try await loadEvents(days: fullEventDays, replacing: true)
+    private func calendarsAndEventsStep() async -> [Error?] {
+        let calendars = await loadCalendars()
+        return await calendars + loadEvents(days: fullEventDays, replacing: true)
+    }
+
+    private func listsAndTasksStep() async -> [Error?] {
+        let lists = await loadTaskLists()
+        return await lists + loadTasks()
+    }
+
+    private func nearEventsStep() async -> [Error?] {
+        await loadEvents(days: daysToLoad, replacing: false)
+    }
+
+    private func allEventsStep() async -> [Error?] {
+        await loadEvents(days: fullEventDays, replacing: true)
+    }
+
+    private func tasksStep() async -> [Error?] {
+        await loadTasks()
+    }
+
+    /// Runs `work` for every signed-in account side by side. Returns what each account delivered,
+    /// by account id (leaving out accounts removed or signed out meanwhile), and one result per
+    /// account: nil, or its error, named after the account when there are several.
+    private func eachAccount<T>(_ work: @escaping (any Account) async throws -> T) async
+        -> (values: [String: T], results: [Error?]) {
+        let several = accounts.all.count > 1
+        let outcomes = await withTaskGroup(of: (id: String, name: String, result: Result<T, Error>).self) { group in
+            for account in accounts.active {
+                group.addTask { @MainActor in
+                    do {
+                        return (account.id, account.name, .success(try await work(account)))
+                    } catch {
+                        return (account.id, account.name, .failure(error))
+                    }
+                }
+            }
+            var all: [(id: String, name: String, result: Result<T, Error>)] = []
+            for await outcome in group { all.append(outcome) }
+            return all
         }
-    }
-
-    private func listsAndTasksStep() async -> Error? {
-        await attempt {
-            let lists = try await fetchTaskLists()
-            if lists != fetchedTaskLists { fetchedTaskLists = lists }
-            try await loadTasks()
+        var values: [String: T] = [:]
+        var results: [Error?] = []
+        for outcome in outcomes {
+            switch outcome.result {
+            case .success(let value):
+                if isActive(outcome.id) { values[outcome.id] = value }
+                results.append(nil)
+            case .failure(let error):
+                results.append(several && !(error is CancellationError) ? AccountFailure(account: outcome.name, underlying: error) : error)
+            }
         }
-    }
-
-    private func nearEventsStep() async -> Error? {
-        await attempt { try await loadEvents(days: daysToLoad, replacing: false) }
-    }
-
-    private func allEventsStep() async -> Error? {
-        await attempt { try await loadEvents(days: fullEventDays, replacing: true) }
-    }
-
-    private func tasksStep() async -> Error? {
-        await attempt { try await loadTasks() }
-    }
-
-    private func attempt(_ step: () async throws -> Void) async -> Error? {
-        do {
-            try await step()
-            return nil
-        } catch {
-            return error
-        }
+        return (values, results)
     }
 
     /// After any refresh: "Synced" time, the first error (if any), cache and reminders. Runs
@@ -525,30 +590,67 @@ final class Store: ObservableObject {
     private func finishSync(_ results: [Error?]) async {
         let errors = results.compactMap { $0 }.filter { !($0 is CancellationError) }
         if errors.count < results.count { lastSync = Date() }
-        let message = errors.first?.localizedDescription
+        // An account that needs to be signed in again is mentioned until it is
+        let signedOut = accounts.states.first { !$0.isActive }
+            .map { AccountFailure(account: $0.name, underlying: AuthError.sessionExpired) }
+        let message = (errors.first ?? signedOut)?.localizedDescription
         if message != errorMessage { errorMessage = message }
         saveCache()
         await scheduleReminders()
+        if fullRefreshPending, loadCount == 0 { await refresh() }
     }
 
-    /// Loads events for `days` days from today. A full load replaces everything; otherwise
-    /// those days are replaced and events loaded further ahead are kept.
-    private func loadEvents(days: Int, replacing: Bool) async throws {
-        let from = day, version = eventsVersion
-        let fetched = try await fetchEvents(from: from, days: days)
+    /// Each account's calendars; an account that can't be reached keeps the ones it had.
+    private func loadCalendars() async -> [Error?] {
+        let outcome = await eachAccount { try await $0.fetchCalendars() }
+        let merged = accounts.all.flatMap { account in
+            outcome.values[account.id] ?? fetchedCalendars.filter { $0.accountID == account.id }
+        }
+        if merged != fetchedCalendars { fetchedCalendars = merged }
+        return outcome.results
+    }
+
+    private func loadTaskLists() async -> [Error?] {
+        let outcome = await eachAccount { try await $0.fetchTaskLists() }
+        let merged = accounts.all.flatMap { account in
+            outcome.values[account.id] ?? fetchedTaskLists.filter { $0.accountID == account.id }
+        }
+        if merged != fetchedTaskLists { fetchedTaskLists = merged }
+        return outcome.results
+    }
+
+    /// Loads events for `days` days from today. For each account that answers, a full load
+    /// replaces its events; otherwise those days are replaced and events loaded further ahead are
+    /// kept. An account that can't be reached keeps what it had.
+    private func loadEvents(days: Int, replacing: Bool) async -> [Error?] {
+        let from = day, version = eventsVersion, end = day.adding(days: days)
+        let shown = calendars.filter(isShown)
+        let outcome = await eachAccount { account in
+            try await account.fetchEvents(in: shown.filter { $0.accountID == account.id }, from: from, to: end)
+        }
         // Outdated if the day rolled over or an edit happened meanwhile (the edit reloads itself)
-        guard from == day, version == eventsVersion else { return }
-        let end = from.adding(days: days)
-        let merged = replacing || days >= loadedDays ? fetched : sortedEvents(fetched + events.filter { $0.start >= end })
+        guard from == day, version == eventsVersion else { return outcome.results }
+        let keepsLater = !replacing && days < loadedDays
+        let kept = events.filter { e in
+            isActive(e.accountID) && (outcome.values[e.accountID] == nil || (keepsLater && e.start >= end))
+        }
+        let merged = sortedEvents(kept + outcome.values.values.joined())
         if merged != events { events = merged }
         loadedDays = replacing ? days : max(loadedDays, days)
+        return outcome.results
     }
 
-    private func loadTasks() async throws {
+    private func loadTasks() async -> [Error?] {
         let version = tasksVersion
-        let fetched = try await fetchTasks()
-        guard version == tasksVersion else { return }
-        if fetched != tasks { tasks = fetched }
+        let shown = taskLists.filter(isShown)
+        let outcome = await eachAccount { account in
+            try await account.fetchTasks(in: shown.filter { $0.accountID == account.id })
+        }
+        guard version == tasksVersion else { return outcome.results }
+        let kept = tasks.filter { isActive($0.accountID) && outcome.values[$0.accountID] == nil }
+        let merged = TaskItem.arranged(kept + outcome.values.values.joined())
+        if merged != tasks { tasks = merged }
+        return outcome.results
     }
 
     /// More days were chosen than are loaded: load them shortly (clicks in between restart the wait).
@@ -558,6 +660,31 @@ final class Store: ObservableObject {
             try? await Task.sleep(for: .seconds(Sync.daysChangeDelay))
             guard !Task.isCancelled else { return }
             await refreshEvents()
+        }
+    }
+
+    /// Accounts were added, removed, signed out or signed in again.
+    private func accountsChanged() {
+        let states = accounts.states
+        guard states != knownAccounts else { return }
+        let before = knownAccounts
+        knownAccounts = states
+        guard !states.isEmpty else { return clear() }
+        let ids = Set(states.map(\.id))
+        for removed in before where !ids.contains(removed.id) { forgetSettings(of: removed.id) }
+        // Removed accounts disappear. Signed-out ones keep their calendars and lists in Settings,
+        // but their events and tasks are hidden until they're signed in again.
+        fetchedCalendars.removeAll { !ids.contains($0.accountID) }
+        fetchedTaskLists.removeAll { !ids.contains($0.accountID) }
+        events.removeAll { !isActive($0.accountID) }
+        tasks.removeAll { !isActive($0.accountID) }
+        if let completed = recentlyCompleted, !isActive(completed.accountID) { recentlyCompleted = nil }
+        saveCache()
+        Task { await scheduleReminders() }
+        // A new account, or one signed in again, needs everything loaded
+        let activeBefore = Set(before.filter(\.isActive).map(\.id))
+        if states.contains(where: { $0.isActive && !activeBefore.contains($0.id) }) {
+            Task { await refresh() }
         }
     }
 
@@ -577,11 +704,50 @@ final class Store: ObservableObject {
         Task { await Notifier.shared?.removeAll() }
     }
 
+    /// Drops what Settings remembers about a removed account's calendars and lists.
+    private func forgetSettings(of accountID: String) {
+        let prefix = accountID + "/"
+        // Keys are an id, or "kind:" followed by one
+        func belongs(_ key: String) -> Bool {
+            key.hasPrefix(prefix) || key.split(separator: ":", maxSplits: 1).last?.hasPrefix(prefix) == true
+        }
+        visibility = visibility.filter { !belongs($0.key) }
+        collapsed = collapsed.filter { !belongs($0) }
+        listColors = listColors.filter { !belongs($0.key) }
+        customOrder = customOrder.mapValues { $0.filter { !belongs($0) } }
+    }
+
+    /// machen 1.x had a single Google account and kept these settings by calendar and list id
+    /// alone. They now belong to the account its sign-in became.
+    private static func moveSettings(toAccount accountID: String) {
+        let defaults = UserDefaults.standard
+        let prefix = accountID + "/"
+        // "cal:<id>" becomes "cal:<account>/<id>"
+        func qualified(_ key: String) -> String {
+            guard let colon = key.firstIndex(of: ":") else { return prefix + key }
+            return String(key[...colon]) + prefix + String(key[key.index(after: colon)...])
+        }
+        if let visibility = defaults.dictionary(forKey: "visibility") as? [String: Bool] {
+            defaults.set(Dictionary(visibility.map { (qualified($0.key), $0.value) }, uniquingKeysWith: { a, _ in a }),
+                         forKey: "visibility")
+        }
+        if let collapsed = defaults.stringArray(forKey: "collapsed") {
+            defaults.set(collapsed.map(qualified), forKey: "collapsed")
+        }
+        if let colors = defaults.dictionary(forKey: "listColors") as? [String: String] {
+            defaults.set(Dictionary(colors.map { (prefix + $0.key, $0.value) }, uniquingKeysWith: { a, _ in a }),
+                         forKey: "listColors")
+        }
+        if let order = defaults.dictionary(forKey: "customOrder") as? [String: [String]] {
+            defaults.set(order.mapValues { $0.map { prefix + $0 } }, forKey: "customOrder")
+        }
+    }
+
     /// Brings macOS's scheduled notifications in line with the loaded events. The first time,
     /// macOS asks whether machen may show notifications.
     private func scheduleReminders() async {
         guard let notifier = Notifier.shared else { return }
-        guard notificationsEnabled, auth.isSignedIn else {
+        guard notificationsEnabled, accounts.hasActiveAccount else {
             await notifier.removeAll()
             return
         }
@@ -599,138 +765,24 @@ final class Store: ObservableObject {
         }
     }
 
-    private func fetchCalendars() async throws -> [CalendarInfo] {
-        var result: [CalendarInfo] = []
-        var token: String?
-        repeat {
-            let page: CalendarListResponse = try await api.get(Endpoint.calendar(
-                "users", "me", "calendarList", query: ["maxResults": "250", "pageToken": token]))
-            result += page.items ?? []
-            token = page.nextPageToken
-        } while token != nil
-        return result.sorted { ($0.primary == true ? 0 : 1, $0.name) < ($1.primary == true ? 0 : 1, $1.name) }
+    // MARK: Edits
+
+    private func account(_ id: String) throws -> any Account {
+        guard let account = accounts.account(id) else { throw AccountError.notConnected }
+        return account
     }
 
-    private func fetchEvents(from day: Date, days: Int) async throws -> [CalendarEvent] {
-        let shown = calendars.filter(isShown)
-        let start = day, end = day.adding(days: days)
-        return try await withThrowingTaskGroup(of: [CalendarEvent].self) { group in
-            for cal in shown {
-                group.addTask { try await self.fetchEvents(in: cal, from: start, to: end) }
-            }
-            var all: [CalendarEvent] = []
-            for try await items in group { all += items }
-            return sortedEvents(all)
-        }
-    }
-
-    private func fetchEvents(in cal: CalendarInfo, from start: Date, to end: Date) async throws -> [CalendarEvent] {
-        var result: [CalendarEvent] = []
-        var token: String?
-        repeat {
-            let page: EventsResponse = try await api.get(Endpoint.calendar(
-                "calendars", cal.id, "events",
-                query: [
-                    "timeMin": GDate.dateTimeString(start),
-                    "timeMax": GDate.dateTimeString(end),
-                    "singleEvents": "true",
-                    "orderBy": "startTime",
-                    "maxResults": "250",
-                    "pageToken": token,
-                    "fields": Sync.eventFields,
-                ]))
-            result += (page.items ?? []).compactMap { CalendarEvent($0, calendar: cal) }
-            token = page.nextPageToken
-        } while token != nil
-        return result
-    }
-
-    private func fetchTaskLists() async throws -> [TaskListInfo] {
-        var result: [TaskListInfo] = []
-        var token: String?
-        repeat {
-            let page: TaskListsResponse = try await api.get(Endpoint.tasks(
-                "users", "@me", "lists", query: ["maxResults": "100", "pageToken": token]))
-            result += page.items ?? []
-            token = page.nextPageToken
-        } while token != nil
-        return result
-    }
-
-    private func fetchTasks() async throws -> [TaskItem] {
-        let shown = taskLists.filter(isShown)
-        return try await withThrowingTaskGroup(of: [TaskItem].self) { group in
-            for list in shown {
-                group.addTask { try await self.fetchTasks(in: list) }
-            }
-            var all: [TaskItem] = []
-            for try await items in group { all += items }
-            return TaskItem.arranged(all)
-        }
-    }
-
-    private func fetchTasks(in list: TaskListInfo) async throws -> [TaskItem] {
-        var result: [TaskItem] = []
-        var token: String?
-        repeat {
-            let page: TasksResponse = try await api.get(Endpoint.tasks(
-                "lists", list.id, "tasks",
-                query: ["showCompleted": "false", "showHidden": "false", "maxResults": "100", "pageToken": token]))
-            result += (page.items ?? [])
-                .filter { $0.status != "completed" && $0.deleted != true }
-                .map { TaskItem($0, list: list) }
-            token = page.nextPageToken
-        } while token != nil
-        return result
-    }
-
-    // MARK: Event edits
-
-    /// Saves a new or edited event, sending only what changed. Returns once Google has it; the
-    /// list refreshes in the background. For an occurrence of a repeating event, `.allEvents`
-    /// edits the series instead (see `SeriesShift`). A changed calendar moves the event (Google
-    /// only moves whole series, so the editor offers that for `.allEvents` only).
+    /// Saves a new or edited event. Returns once its account has it; the list refreshes in the
+    /// background. For an occurrence of a repeating event, `.allEvents` edits the series. A
+    /// changed calendar moves the event, within its account.
     func save(_ d: EventDraft, scope: EditScope = .thisEvent) async throws {
+        guard let target = calendar(d.calendarID), let home = calendar(d.originalCalendarID ?? d.calendarID) else {
+            throw AccountError.missing
+        }
+        guard target.accountID == home.accountID else { throw AccountError.otherAccount }
         eventsVersion += 1
-        let home = d.originalCalendarID ?? d.calendarID
         let editsSeries = scope == .allEvents && d.recurringEventID != nil && !d.isNew
-        var body: [String: Any] = [:]
-        if d.original?.title != d.title { body["summary"] = d.title }
-        if d.original?.location != d.location { body["location"] = d.location }
-        if d.original?.notes != d.notes { body["description"] = d.notes }
-        if d.timesChanged {
-            var start = d.start, end = max(d.end, d.start), timeZone = TimeZone.current.identifier
-            if editsSeries, let original = d.original, let seriesID = d.recurringEventID {
-                try SeriesShift.check(original: original, edited: d.values)
-                let series: GEvent = try await api.get(Endpoint.calendar("calendars", home, "events", seriesID))
-                if d.isAllDay, let first = series.start?.date.flatMap(GDate.parseDay) {
-                    (start, end) = SeriesShift.allDay(seriesStart: first, editedStart: d.start, editedEnd: end)
-                } else if let first = series.start?.dateTime.flatMap(GDate.parseDateTime) {
-                    (start, end) = SeriesShift.timed(seriesStart: first, occurrenceStart: original.start,
-                                                     editedStart: d.start, editedEnd: end)
-                    timeZone = series.start?.timeZone ?? timeZone
-                }
-            }
-            let patch = !d.isNew
-            if d.isAllDay {
-                body["start"] = allDayTime(start.startOfDay, patch: patch)
-                body["end"] = allDayTime(end.startOfDay.adding(days: 1), patch: patch)
-            } else {
-                body["start"] = timedTime(start, timeZone: timeZone, patch: patch)
-                body["end"] = timedTime(end, timeZone: timeZone, patch: patch)
-            }
-        }
-        if let id = editsSeries ? d.recurringEventID : d.eventID {
-            if !body.isEmpty {
-                try await api.send("PATCH", Endpoint.calendar("calendars", home, "events", id), body: body)
-            }
-            if d.isMoving {
-                try await api.send("POST", Endpoint.calendar("calendars", home, "events", id, "move",
-                                                             query: ["destination": d.calendarID]))
-            }
-        } else {
-            try await api.send("POST", Endpoint.calendar("calendars", d.calendarID, "events"), body: body)
-        }
+        try await account(home.accountID).save(d, in: target, home: home, scope: editsSeries ? .allEvents : .thisEvent)
         // A series or an event beyond the near days needs the whole range reloaded
         let near = !editsSeries && d.start < day.adding(days: daysToLoad)
         Task {
@@ -741,46 +793,22 @@ final class Store: ObservableObject {
     /// Deletes an event, or with `.allEvents` the whole series an occurrence belongs to.
     func deleteEvent(_ d: EventDraft, scope: EditScope = .thisEvent) async throws {
         guard let id = d.eventID else { return }
+        guard let home = calendar(d.originalCalendarID ?? d.calendarID) else { throw AccountError.missing }
         eventsVersion += 1
-        let home = d.originalCalendarID ?? d.calendarID
         let series = scope == .allEvents ? d.recurringEventID : nil
-        try await api.send("DELETE", Endpoint.calendar("calendars", home, "events", series ?? id))
+        try await account(home.accountID).deleteEvent(d, in: home, scope: scope)
         events.removeAll { event in
-            event.calendarID == home && (event.eventID == id || (series != nil && event.recurringEventID == series))
+            event.calendarID == home.id && (event.eventID == id || (series != nil && event.recurringEventID == series))
         }
         saveCache()
         await scheduleReminders()
     }
 
-    // Switching an existing event between timed and all-day requires nulling the other field.
-    private func allDayTime(_ d: Date, patch: Bool) -> [String: Any] {
-        var t: [String: Any] = ["date": GDate.dayString(d)]
-        if patch { t["dateTime"] = NSNull() }
-        return t
-    }
-
-    private func timedTime(_ d: Date, timeZone: String, patch: Bool) -> [String: Any] {
-        var t: [String: Any] = ["dateTime": GDate.dateTimeString(d), "timeZone": timeZone]
-        if patch { t["date"] = NSNull() }
-        return t
-    }
-
-    // MARK: Task edits
-
-    /// Saves a new or edited task. Returns once Google has it; the list refreshes in the background.
+    /// Saves a new or edited task. Returns once its account has it; the list refreshes in the background.
     func save(_ d: TaskDraft) async throws {
+        guard let list = taskList(d.listID) else { throw AccountError.missing }
         tasksVersion += 1
-        var body: [String: Any] = ["title": d.title, "notes": d.notes]
-        if d.hasDue {
-            body["due"] = GDate.taskDueString(d.due)
-        } else if !d.isNew {
-            body["due"] = NSNull()
-        }
-        if let id = d.taskID {
-            try await api.send("PATCH", Endpoint.tasks("lists", d.listID, "tasks", id), body: body)
-        } else {
-            try await api.send("POST", Endpoint.tasks("lists", d.listID, "tasks", query: ["parent": d.parentID]), body: body)
-        }
+        try await account(list.accountID).save(d, in: list)
         Task { await refreshTasks() }
     }
 
@@ -788,16 +816,15 @@ final class Store: ObservableObject {
     /// Afterwards the completion can be undone for a few seconds.
     func complete(listID: String, taskID: String) async {
         // Already completed, for example by a quick second click
-        guard let task = tasks.first(where: { $0.listID == listID && $0.taskID == taskID }) else { return }
+        guard let task = tasks.first(where: { $0.listID == listID && $0.taskID == taskID }),
+              let list = taskList(listID) else { return }
         tasksVersion += 1
         let ids = [taskID] + tasks.filter { $0.listID == listID && $0.parentID == taskID }.map(\.taskID)
         tasks.removeAll { $0.listID == listID && ids.contains($0.taskID) }
         do {
-            for id in ids {
-                try await api.send("PATCH", Endpoint.tasks("lists", listID, "tasks", id), body: ["status": "completed"])
-            }
+            try await account(list.accountID).setCompleted(true, taskIDs: ids, in: list)
             saveCache()
-            offerUndo(CompletedTasks(listID: listID, taskIDs: ids, title: task.title))
+            offerUndo(CompletedTasks(accountID: list.accountID, listID: listID, taskIDs: ids, title: task.title))
         } catch {
             report(error)
             await refreshTasks()
@@ -818,10 +845,8 @@ final class Store: ObservableObject {
         recentlyCompleted = nil
         tasksVersion += 1
         do {
-            for id in completed.taskIDs {
-                try await api.send("PATCH", Endpoint.tasks("lists", completed.listID, "tasks", id),
-                                   body: ["status": "needsAction", "completed": NSNull()])
-            }
+            guard let list = taskList(completed.listID) else { throw AccountError.missing }
+            try await account(list.accountID).setCompleted(false, taskIDs: completed.taskIDs, in: list)
         } catch {
             report(error)
         }
@@ -830,8 +855,9 @@ final class Store: ObservableObject {
 
     func deleteTask(_ d: TaskDraft) async throws {
         guard let id = d.taskID else { return }
+        guard let list = taskList(d.listID) else { throw AccountError.missing }
         tasksVersion += 1
-        try await api.send("DELETE", Endpoint.tasks("lists", d.listID, "tasks", id))
+        try await account(list.accountID).deleteTask(id, in: list)
         tasks.removeAll { $0.listID == d.listID && ($0.taskID == id || $0.parentID == id) }
         // Reload so any subtasks reflect what Google did with them
         Task { await refreshTasks() }
@@ -852,8 +878,7 @@ final class Store: ObservableObject {
         /// Events from `eventsFrom` for `loadedDays` days; only reused on the same day.
         var events: [CalendarEvent]
         var eventsFrom: Date
-        /// Optional so cache files written before it existed still load.
-        var loadedDays: Int?
+        var loadedDays: Int
         var lastSync: Date?
 
         var withoutSyncTime: Cache {
@@ -875,22 +900,24 @@ final class Store: ObservableObject {
         #endif
     }()
 
+    /// A cache from machen 1.x has no accounts in it, doesn't decode, and is replaced by the first sync.
     private func loadCache() {
-        guard auth.isSignedIn, let url = Self.cacheURL, let data = try? Data(contentsOf: url),
+        guard !accounts.all.isEmpty, let url = Self.cacheURL, let data = try? Data(contentsOf: url),
               let cache = try? JSONDecoder().decode(Cache.self, from: data) else { return }
-        fetchedCalendars = cache.calendars
-        fetchedTaskLists = cache.taskLists
-        tasks = cache.tasks
+        let ids = Set(accounts.all.map(\.id))
+        fetchedCalendars = cache.calendars.filter { ids.contains($0.accountID) }
+        fetchedTaskLists = cache.taskLists.filter { ids.contains($0.accountID) }
+        tasks = cache.tasks.filter { isActive($0.accountID) }
         if cache.eventsFrom == day {
-            events = cache.events
-            loadedDays = cache.loadedDays ?? 0
+            events = cache.events.filter { isActive($0.accountID) }
+            loadedDays = cache.loadedDays
         }
         lastSync = cache.lastSync
         lastCacheContent = cache.withoutSyncTime
     }
 
     private func saveCache() {
-        guard auth.isSignedIn, let url = Self.cacheURL else { return }
+        guard !accounts.all.isEmpty, let url = Self.cacheURL else { return }
         let cache = Cache(calendars: fetchedCalendars, taskLists: fetchedTaskLists, tasks: tasks,
                           events: events, eventsFrom: day, loadedDays: loadedDays, lastSync: lastSync)
         // The sync time alone changes every minute; it's not worth a write
@@ -915,6 +942,8 @@ extension Store {
     /// Only compiled into that tool, never into the app.
     func loadSample(calendars: [CalendarInfo], events: [CalendarEvent], taskLists: [TaskListInfo],
                     tasks: [TaskItem], collapsedLists: [String], lastSync: Date) {
+        // Setting the number of days may have asked for a load, which the sample accounts can't do
+        pendingDaysLoad?.cancel()
         fetchedCalendars = calendars
         fetchedTaskLists = taskLists
         self.events = sortedEvents(events)

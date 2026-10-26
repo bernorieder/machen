@@ -1,46 +1,6 @@
 import SwiftUI
 import Security
 
-/// Date conversions between Google's wire formats and local dates.
-enum GDate {
-    private static let iso: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-
-    private static let isoFractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    static func parseDateTime(_ s: String) -> Date? {
-        iso.date(from: s) ?? isoFractional.date(from: s)
-    }
-
-    /// Parses the "yyyy-MM-dd" prefix as a local calendar day (all-day events, task due dates).
-    static func parseDay(_ s: String) -> Date? {
-        let parts = s.prefix(10).split(separator: "-").compactMap { Int($0) }
-        guard parts.count == 3 else { return nil }
-        return Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
-    }
-
-    static func dayString(_ d: Date) -> String {
-        let c = Calendar.current.dateComponents([.year, .month, .day], from: d)
-        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 1, c.day ?? 1)
-    }
-
-    static func dateTimeString(_ d: Date) -> String {
-        iso.string(from: d)
-    }
-
-    /// Google Tasks stores only the date part of `due`, always as midnight UTC.
-    static func taskDueString(_ d: Date) -> String {
-        dayString(d) + "T00:00:00.000Z"
-    }
-}
-
 extension Date {
     var startOfDay: Date { Calendar.current.startOfDay(for: self) }
 

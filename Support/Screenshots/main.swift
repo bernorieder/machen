@@ -19,39 +19,38 @@ app.applicationIconImage = NSImage(contentsOf: URL(fileURLWithPath: CommandLine.
 let today = Date().startOfDay
 let hour = Calendar.current.dateInterval(of: .hour, for: Date())!.start
 
-func calendar(_ id: String, _ name: String, _ color: String, primary: Bool = false) -> CalendarInfo {
-    CalendarInfo(id: id, summary: name, summaryOverride: nil, backgroundColor: color,
-                 accessRole: "owner", selected: true, primary: primary)
+let personalAccount = (id: "google-sample1", email: "sam@example.com")
+let workAccount = (id: "google-sample2", email: "sam@university.example.org")
+
+func calendar(_ id: String, _ name: String, _ color: String, account: String = personalAccount.id,
+              primary: Bool = false) -> CalendarInfo {
+    CalendarInfo(accountID: account, remoteID: id, name: name, color: color, canEdit: true, isPrimary: primary,
+                 shownByDefault: true, defaultReminderMinutes: [])
 }
 
-func event(_ title: String, _ cal: CalendarInfo, start: Date, hours: Double = 1, location: String? = nil,
+func event(_ title: String, _ cal: CalendarInfo, start: Date, hours: Double = 1, location: String = "",
            meeting: String? = nil) -> CalendarEvent {
-    var json: [String: Any] = ["id": title, "summary": title,
-                               "start": ["dateTime": GDate.dateTimeString(start)],
-                               "end": ["dateTime": GDate.dateTimeString(start.addingTimeInterval(hours * 3600))]]
-    if let location { json["location"] = location }
-    if let meeting { json["hangoutLink"] = meeting }
-    return CalendarEvent(try! JSONDecoder().decode(GEvent.self, from: JSONSerialization.data(withJSONObject: json)), calendar: cal)!
+    CalendarEvent(eventID: title, calendarID: cal.id, accountID: cal.accountID, title: title, start: start,
+                  end: start.addingTimeInterval(hours * 3600), isAllDay: false, location: location, notes: "",
+                  color: cal.color, canEdit: true, declined: false, link: nil, meetingURL: meeting.flatMap(URL.init),
+                  recurringEventID: nil, reminderMinutes: [])
 }
 
 func allDay(_ title: String, _ cal: CalendarInfo, from: Int, days: Int) -> CalendarEvent {
-    let json: [String: Any] = ["id": title, "summary": title,
-                               "start": ["date": GDate.dayString(today.adding(days: from))],
-                               "end": ["date": GDate.dayString(today.adding(days: from + days))]]
-    return CalendarEvent(try! JSONDecoder().decode(GEvent.self, from: JSONSerialization.data(withJSONObject: json)), calendar: cal)!
+    CalendarEvent(eventID: title, calendarID: cal.id, accountID: cal.accountID, title: title,
+                  start: today.adding(days: from), end: today.adding(days: from + days), isAllDay: true,
+                  location: "", notes: "", color: cal.color, canEdit: true, declined: false, link: nil,
+                  meetingURL: nil, recurringEventID: nil, reminderMinutes: [])
 }
 
 func task(_ id: String, _ title: String, in list: TaskListInfo, parent: String? = nil, dueIn days: Int? = nil,
-          notes: String? = nil) -> TaskItem {
-    var json: [String: Any] = ["id": id, "title": title, "position": id]
-    if let parent { json["parent"] = parent }
-    if let days { json["due"] = GDate.taskDueString(today.adding(days: days)) }
-    if let notes { json["notes"] = notes }
-    return TaskItem(try! JSONDecoder().decode(GTask.self, from: JSONSerialization.data(withJSONObject: json)), list: list)
+          notes: String = "") -> TaskItem {
+    TaskItem(taskID: id, listID: list.id, accountID: list.accountID, title: title, notes: notes,
+             due: days.map { today.adding(days: $0) }, position: id, parentID: parent)
 }
 
 let personal = calendar("personal", "Personal", "#039BE5", primary: true)
-let work = calendar("work", "Work", "#0B8043")
+let work = calendar("work", "Work", "#0B8043", account: workAccount.id, primary: true)
 let holidays = calendar("holidays", "Holidays", "#8E24AA")
 
 let events = [
@@ -65,9 +64,9 @@ let events = [
     event("Book club", personal, start: Calendar.current.date(bySettingHour: 19, minute: 0, second: 0, of: today.adding(days: 2))!, hours: 2),
 ]
 
-let todo = TaskListInfo(id: "todo", title: "To do")
-let workList = TaskListInfo(id: "worklist", title: "Work")
-let home = TaskListInfo(id: "home", title: "Home")
+let todo = TaskListInfo(accountID: personalAccount.id, remoteID: "todo", title: "To do")
+let workList = TaskListInfo(accountID: workAccount.id, remoteID: "worklist", title: "Work")
+let home = TaskListInfo(accountID: personalAccount.id, remoteID: "home", title: "Home")
 
 let tasks = TaskItem.arranged([
     task("a", "Renew passport", in: todo, dueIn: -2),
@@ -94,7 +93,8 @@ func screenshot<V: View>(_ view: V, store: Store, dark: Bool, name: String) {
     let content = view
         .frame(width: size.width, height: size.height)
         .background(Color(nsColor: .windowBackgroundColor))
-        .environmentObject(store.auth)
+        .environmentObject(store.accounts)
+        .environmentObject(store.accounts.googleAuth)
         .environmentObject(store)
         .environment(\.rowDensity, store.density)
         .environment(\.textSizes, store.textSizes)
@@ -145,11 +145,13 @@ func screenshot<V: View>(_ view: V, store: Store, dark: Bool, name: String) {
 }
 
 MainActor.assumeIsolated {
-    let store = Store(auth: GoogleAuth())
+    let accounts = Accounts()
+    accounts.loadSample([personalAccount, workAccount])
+    let store = Store(accounts: accounts)
     store.eventDays = 1
     store.menuBarIcon = "calendar"
     store.loadSample(calendars: [personal, work, holidays], events: events, taskLists: [todo, workList, home],
-                     tasks: tasks, collapsedLists: ["home"],
+                     tasks: tasks, collapsedLists: [home.id],
                      lastSync: Calendar.current.date(bySettingHour: 9, minute: 41, second: 0, of: today)!)
 
     screenshot(AgendaView(route: .constant(.agenda)), store: store, dark: false, name: "agenda-light.png")

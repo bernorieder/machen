@@ -57,7 +57,7 @@ struct AgendaView: View {
                     }
                     ForEach(groups) { group in
                         if listNames {
-                            GroupHeader(title: group.list.title, color: group.color, addHelp: "New task in \(group.list.title)",
+                            GroupHeader(title: group.title, color: group.color, addHelp: "New task in \(group.title)",
                                         onAdd: { route = .task(TaskDraft(listID: group.list.id, day: store.day)) },
                                         isCollapsed: group.isCollapsed,
                                         hiddenCount: group.tasks.count,

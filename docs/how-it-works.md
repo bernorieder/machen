@@ -2,7 +2,7 @@
 
 Technical notes for developers. For using machen, see the [README](../README.md); for building it, see [Building and releasing](building.md).
 
-machen is a SwiftUI menu bar app (`MenuBarExtra` in window style) that talks directly to the Google Calendar API and the Google Tasks API. There's no server of its own.
+machen is a SwiftUI menu bar app (`MenuBarExtra` in window style) that talks directly to the Google Calendar API and the Google Tasks API, for each connected Google account. There's no server of its own.
 
 ## Code map
 
@@ -12,20 +12,33 @@ machen is a SwiftUI menu bar app (`MenuBarExtra` in window style) that talks dir
 | `AgendaView.swift` | The main list: section and group headings, event and task rows, Join button, Undo banner |
 | `Editors.swift` | Event and task editors, including "This event / All events" and Add Subtask |
 | `SettingsViews.swift` | Sign-in screen and the three Settings pages |
-| `Store.swift` | All synced data, the sync schedule, edits sent to Google, the offline cache, scheduling reminders |
-| `Models.swift` | Google API types, display models, edit drafts, ordering rules, meeting-link detection, series shifting |
+| `Store.swift` | All synced data of all accounts, the sync schedule, sending edits to the right account, the offline cache, scheduling reminders |
+| `Accounts.swift` | The `Account` protocol the store works with, and the list of connected accounts, kept in the Keychain |
+| `GoogleAccount.swift` | A Google account: its tokens, Google's API types, loading calendars, events, lists and tasks, and edits |
+| `Models.swift` | Calendars, events, lists and tasks as machen shows them, edit drafts, ordering rules, meeting-link detection, series shifting |
 | `Notifications.swift` | Turning reminders into Mac notifications, and the Join action |
-| `GoogleAuth.swift` | Sign-in (OAuth 2.0 with PKCE and a loopback redirect) and token refresh |
-| `GoogleAPI.swift` | Authorized JSON requests and URL building |
-| `Util.swift` | Date conversions, Keychain access, colours, settings enums, text sizes |
+| `GoogleAuth.swift` | Google sign-in (OAuth 2.0 with PKCE and a loopback redirect) and token refresh |
+| `GoogleAPI.swift` | Authorized JSON requests, URL building and Google's date formats |
+| `Util.swift` | Keychain access, colours, settings enums, text sizes |
 | `Layout.generated.swift` | Layout constants generated from `Support/layout.json`; don't edit |
+
+## Accounts
+
+- **One protocol:** the store works with `Account` (in `Accounts.swift`): load calendars, events, task lists and tasks, and save, complete and delete. `GoogleAccount` is the only kind so far; other kinds, such as calendars on the Mac, would be added beside it.
+- **Ids:** an account's id is `google-` and 8 random hex digits. A calendar's or list's id in machen is the account id, a slash, and the id at Google (`CalendarInfo.id`, `TaskListInfo.id`), because the same calendar can belong to two accounts. Settings (shown calendars, order, list colours, folded lists) use these ids.
+- **Shared calendars:** a calendar that an earlier account has too, such as a shared or a holiday calendar, starts hidden in the later account, so its events don't appear twice.
+- **Address:** a Google account is named by its address, which is the id of its primary calendar. After sign-in machen asks for that calendar's id (`calendars/primary?fields=id`), so no extra permission is needed. Signing in to an account that's already connected renews its sign-in.
+- **Editing:** edits go to the account the calendar or list belongs to. An event can move between calendars of its account, but not to another account, which Google doesn't support.
+- **Removing:** revokes machen's access at Google, drops the tokens, and forgets that account's settings, calendars, events and tasks. Removing the last account deletes the offline cache.
+- **From machen 1.x:** version 1.x had one account. On the first launch of a version with several accounts, its tokens become the first account, the settings get that account's id in front of every calendar and list id, and the old Keychain item is emptied. The old cache doesn't decode any more and is replaced by the first sync.
 
 ## Sign-in
 
 - machen uses Google's flow for desktop apps. It opens the browser and listens on `127.0.0.1` at a random port for Google's redirect. A PKCE code challenge and a random `state` value protect the exchange. If nothing comes back within 5 minutes, sign-in is cancelled.
-- It asks for offline access, so Google returns a refresh token. The tokens are stored in the Keychain (service `local.machen`, account `tokens`).
-- The access token is refreshed shortly before it expires. If Google rejects the refresh token (`invalid_grant`), for example after access was revoked, machen signs out and the sign-in screen says the session expired. Signing out while a refresh is under way doesn't bring the session back.
-- Signing in and out is handled by the store, not by a view, so the cleanup also happens when the panel hasn't been opened yet.
+- Google is asked to show its account chooser (`prompt=select_account consent`), so another account can be added while the browser is signed in to one. Signing in again to an expired account passes its address as `login_hint`.
+- It asks for offline access, so Google returns a refresh token. All accounts and their tokens are stored in one Keychain item (service `local.machen`, account `google-accounts`).
+- Each account refreshes its access token shortly before it expires. If Google rejects the refresh token (`invalid_grant`), for example after access was revoked, that account is signed out: its events and tasks are hidden, Settings → Sources offers **Sign In Again**, and the list shows a note until then. If no account is left signed in, the sign-in screen shows. Removing an account while a refresh is under way doesn't bring it back.
+- Accounts coming and going are handled by the store, not by a view, so the cleanup also happens when the panel hasn't been opened yet.
 - The OAuth client normally comes built into the app; see [building.md](building.md#1-set-up-a-google-project-one-time).
 
 ## Keychain
@@ -33,8 +46,8 @@ machen is a SwiftUI menu bar app (`MenuBarExtra` in window style) that talks dir
 A legacy Keychain item belongs to the app that created it.
 
 - **Signature:** an item created by a Developer ID build is tied to the team's signature, so every later build with the same signature reads it without asking. An item created by an ad-hoc build trusts only that exact build, which is why ad-hoc builds ask after every rebuild.
-- **Writing:** machen always updates its item in place. Any build may do that without asking. Deleting the item would need the owner's permission, which always asks.
-- **Signing out:** the item is emptied, which is also an update, so it doesn't ask either.
+- **Writing:** machen always updates its item in place, also when accounts are added or removed, since they all share one item. Any build may do that without asking. Deleting the item would need the owner's permission, which always asks.
+- **Emptying:** the item of machen 1.x (account `tokens`) is emptied after it's carried over, which is also an update, so it doesn't ask either.
 
 ## Syncing
 
@@ -49,7 +62,7 @@ The intervals are in the `Sync` enum in `Store.swift`.
 | 5 seconds after waking from sleep | Everything |
 | After an edit | The part that changed, in the background |
 
-- **Independent parts:** calendars with their events, and task lists with their tasks, load side by side and independently. If the Tasks API fails, events still update, and the other way round. The 5-minute timer restarts even after a failure, so a failing part doesn't turn every minute into a full sync.
+- **Independent parts:** calendars with their events, and task lists with their tasks, load side by side and independently, and so do accounts. If the Tasks API fails, events still update, and the other way round; if one account can't be reached, it keeps what it had while the others update. Errors name the account when there are several. The 5-minute timer restarts even after a failure, so a failing part doesn't turn every minute into a full sync.
 - **Edits come first:** every local edit (completing a task, saving an event and so on) marks the data as changed, and results from a fetch that started before the edit are thrown away. The edit's own refresh brings the final state.
 
 ### Events
@@ -71,13 +84,13 @@ Google's default quota is 1 million Calendar requests a day for all users of a G
 
 ## Offline cache
 
-The last loaded calendars, task lists, tasks and events, and the 4-week reminder window, are stored in `~/Library/Application Support/io.github.bernorieder.machen/cache.json`, readable only by the user (`0600`). machen shows them right away at launch, then refreshes. The cached events are only reused on the same day. The file is only rewritten when its contents change, not for every refresh. Signing out deletes it.
+The last loaded calendars, task lists, tasks and events of all accounts, and the 4-week reminder window, are stored in `~/Library/Application Support/io.github.bernorieder.machen/cache.json`, readable only by the user (`0600`). machen shows them right away at launch, then refreshes. The cached events are only reused on the same day. The file is only rewritten when its contents change, not for every refresh. Removing the last account deletes it.
 
 ## Notifications
 
 - **What becomes a notification:** each popup reminder of an event, that is the event's own reminders or, if it uses the defaults, its calendar's default reminders. Email reminders are left to Google. Declined events are skipped.
 - **Scheduling:** notifications are scheduled with macOS's `UserNotifications` after every sync, and already at launch from the cache. Only new or changed reminders are handed to macOS; ones no longer wanted are removed. At most the 60 soonest are scheduled at a time. Scheduling runs after the loading spinner stops, because the first time macOS may wait for an answer to its permission prompt.
-- **Removing:** when machen quits, it removes its pending notifications, because macOS would deliver them without asking machen. They're also removed on sign-out, and when **Event notifications** is switched off.
+- **Removing:** when machen quits, it removes its pending notifications, because macOS would deliver them without asking machen. They're also removed when the last account is removed or signed out, and when **Event notifications** is switched off. Events of a signed-out account get no notifications.
 - **Join:** a notification for an event with a video call has a **Join** button.
 - **Permission:** macOS asks for permission the first time. If it's denied, Settings says so and links to System Settings.
 
@@ -115,4 +128,4 @@ macOS doesn't reliably resize a menu bar panel when its content changes height, 
 
 ## Settings storage
 
-Settings are stored in the app's preferences, `~/Library/Preferences/io.github.bernorieder.machen.plist`. They're separate from the sign-in, which is in the Keychain, and from the cache.
+Settings are stored in the app's preferences, `~/Library/Preferences/io.github.bernorieder.machen.plist`. They're separate from the accounts, which are in the Keychain, and from the cache.

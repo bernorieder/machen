@@ -2,19 +2,20 @@ import SwiftUI
 
 @main
 struct MachenApp: App {
-    @StateObject private var auth: GoogleAuth
+    @StateObject private var accounts: Accounts
     @StateObject private var store: Store
 
     init() {
-        let auth = GoogleAuth()
-        _auth = StateObject(wrappedValue: auth)
-        _store = StateObject(wrappedValue: Store(auth: auth))
+        let accounts = Accounts()
+        _accounts = StateObject(wrappedValue: accounts)
+        _store = StateObject(wrappedValue: Store(accounts: accounts))
     }
 
     var body: some Scene {
         MenuBarExtra {
             RootView()
-                .environmentObject(auth)
+                .environmentObject(accounts)
+                .environmentObject(accounts.googleAuth)
                 .environmentObject(store)
         } label: {
             MenuBarIcon.image(store.menuBarIcon)
@@ -31,7 +32,7 @@ enum Route: Equatable {
 }
 
 struct RootView: View {
-    @EnvironmentObject private var auth: GoogleAuth
+    @EnvironmentObject private var accounts: Accounts
     @EnvironmentObject private var store: Store
     @ViewState private var route: Route = .agenda
     /// Counts openings of the panel, so its height is fitted to the screen it opened on.
@@ -39,7 +40,7 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if !auth.isSignedIn {
+            if !accounts.hasActiveAccount {
                 SignInView()
             } else {
                 switch route {
@@ -62,8 +63,8 @@ struct RootView: View {
         })
         .environment(\.rowDensity, store.density)
         .environment(\.textSizes, store.textSizes)
-        // Loading and clearing data on sign-in and sign-out is the store's job
-        .onChange(of: auth.isSignedIn) { _, _ in route = .agenda }
+        // Loading and clearing data when accounts come and go is the store's job
+        .onChange(of: accounts.hasActiveAccount) { _, _ in route = .agenda }
     }
 
     private var fittedHeight: CGFloat {

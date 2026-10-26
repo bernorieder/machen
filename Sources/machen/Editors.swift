@@ -52,6 +52,22 @@ struct DeleteRow: View {
     }
 }
 
+/// Picker items grouped by account, under the accounts' names when there are several.
+struct AccountSections<Item: Identifiable, Row: View>: View {
+    let groups: [AccountGroup<Item>]
+    @ViewBuilder let row: (Item) -> Row
+
+    var body: some View {
+        ForEach(groups) { group in
+            if groups.count > 1 {
+                Section(group.name) { ForEach(group.items, content: row) }
+            } else {
+                ForEach(group.items, content: row)
+            }
+        }
+    }
+}
+
 struct EventEditor: View {
     @EnvironmentObject private var store: Store
     @ViewState private var draft: EventDraft
@@ -94,7 +110,7 @@ struct EventEditor: View {
                 Section {
                     TextField("Title", text: $draft.title, prompt: Text("Event title"))
                     Picker("Calendar", selection: $draft.calendarID) {
-                        ForEach(store.writableCalendars) { cal in
+                        AccountSections(groups: store.calendarChoices(for: draft)) { cal in
                             Text(cal.name).tag(cal.id)
                         }
                     }
@@ -244,7 +260,7 @@ struct TaskEditor: View {
                         LabeledContent("Subtask of", value: parentTitle)
                     } else {
                         Picker("List", selection: $draft.listID) {
-                            ForEach(store.taskLists) { list in
+                            AccountSections(groups: store.taskListChoices) { list in
                                 Text(list.title).tag(list.id)
                             }
                         }

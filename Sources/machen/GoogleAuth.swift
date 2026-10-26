@@ -2,12 +2,6 @@ import AppKit
 import CryptoKit
 import Network
 
-struct TokenSet: Codable {
-    var accessToken: String
-    var refreshToken: String
-    var expiry: Date
-}
-
 enum AuthError: LocalizedError {
     case missingClientID
     case denied(String)
@@ -25,14 +19,15 @@ enum AuthError: LocalizedError {
         case .stateMismatch: "The sign-in response didn't match this request. Please try again."
         case .noRefreshToken: "Google didn't return a refresh token. Remove machen at myaccount.google.com/permissions and sign in again."
         case .notSignedIn: "Not signed in."
-        case .sessionExpired: "Your Google session expired. Please sign in again."
+        case .sessionExpired: "The Google session expired. Sign in again in Settings → Sources."
         case .timedOut: "Sign-in timed out."
         case .server(let code, let description): "Google: \(description.isEmpty ? code : description)"
         }
     }
 }
 
-/// OAuth 2.0 for installed apps: browser sign-in with PKCE and a loopback redirect.
+/// Google's OAuth 2.0 for installed apps: browser sign-in with PKCE and a loopback redirect, and
+/// token refresh. The tokens themselves belong to each `GoogleAccount`.
 @MainActor
 final class GoogleAuth: ObservableObject {
     static let scopes = [
@@ -46,35 +41,13 @@ final class GoogleAuth: ObservableObject {
     @Published var clientSecret: String {
         didSet { UserDefaults.standard.set(clientSecret, forKey: "clientSecret") }
     }
-    @Published private(set) var isSignedIn: Bool
     @Published private(set) var isSigningIn = false
-    /// Why the user was signed out without asking (an expired session), shown on the sign-in screen.
-    @Published private(set) var sessionMessage: String?
 
-    private var tokens: TokenSet? {
-        didSet {
-            isSignedIn = tokens != nil
-            if let tokens, let data = try? JSONEncoder().encode(tokens) {
-                Keychain.set(data, for: "tokens")
-            } else {
-                Keychain.clear("tokens")
-            }
-        }
-    }
-    private var refreshTask: Task<TokenSet, Error>?
     private var server: LoopbackServer?
 
     init() {
         clientID = UserDefaults.standard.string(forKey: "clientID") ?? ""
         clientSecret = UserDefaults.standard.string(forKey: "clientSecret") ?? ""
-        #if SCREENSHOTS
-        // The screenshot tool isn't signed as machen, so reading the keychain would prompt.
-        let stored: TokenSet? = nil
-        #else
-        let stored = Keychain.get("tokens").flatMap { try? JSONDecoder().decode(TokenSet.self, from: $0) }
-        #endif
-        tokens = stored
-        isSignedIn = stored != nil
     }
 
     /// OAuth client built into the app by build.sh from Support/Config.local.plist; empty when absent.
@@ -92,7 +65,9 @@ final class GoogleAuth: ObservableObject {
         (hasBundledClient ? Self.bundledClientSecret : clientSecret).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    func signIn() async throws {
+    /// Signs in in the browser and returns the tokens of the account the user picked. `hint`, an
+    /// address, preselects that account; otherwise Google asks which one, so another can be added.
+    func signIn(hint: String? = nil) async throws -> TokenSet {
         guard !trimmedClientID.isEmpty else { throw AuthError.missingClientID }
         isSigningIn = true
         defer { isSigningIn = false }
@@ -108,8 +83,7 @@ final class GoogleAuth: ObservableObject {
         let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URL
         let state = Self.randomToken(16)
 
-        var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
-        components.percentEncodedQueryItems = [
+        var query = [
             "client_id": trimmedClientID,
             "redirect_uri": redirect,
             "response_type": "code",
@@ -118,8 +92,11 @@ final class GoogleAuth: ObservableObject {
             "code_challenge_method": "S256",
             "state": state,
             "access_type": "offline",
-            "prompt": "consent",
-        ].map { URLQueryItem(name: $0.key, value: $0.value.formEscaped) }
+            "prompt": "select_account consent",
+        ]
+        if let hint, !hint.isEmpty { query["login_hint"] = hint }
+        var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
+        components.percentEncodedQueryItems = query.map { URLQueryItem(name: $0.key, value: $0.value.formEscaped) }
         NSWorkspace.shared.open(components.url!)
 
         let params = try await server.waitForCallback(timeout: 300)
@@ -136,56 +113,26 @@ final class GoogleAuth: ObservableObject {
         if !trimmedSecret.isEmpty { form["client_secret"] = trimmedSecret }
         let response = try await tokenRequest(form)
         guard let refresh = response.refresh_token else { throw AuthError.noRefreshToken }
-        tokens = TokenSet(accessToken: response.access_token,
-                          refreshToken: refresh,
-                          expiry: Date().addingTimeInterval(response.expires_in))
-        sessionMessage = nil
-        NSApp.activate(ignoringOtherApps: true)
+        return TokenSet(accessToken: response.access_token,
+                        refreshToken: refresh,
+                        expiry: Date().addingTimeInterval(response.expires_in))
     }
 
     func cancelSignIn() {
         server?.stop()
     }
 
-    func signOut() {
-        if let token = tokens?.refreshToken {
-            var req = URLRequest(url: URL(string: "https://oauth2.googleapis.com/revoke")!)
-            req.httpMethod = "POST"
-            req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-            req.httpBody = Data("token=\(token.formEscaped)".utf8)
-            URLSession.shared.dataTask(with: req).resume()
-        }
-        tokens = nil
+    /// Revokes machen's access to the account `refreshToken` belongs to.
+    func revoke(_ refreshToken: String) {
+        var req = URLRequest(url: URL(string: "https://oauth2.googleapis.com/revoke")!)
+        req.httpMethod = "POST"
+        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Data("token=\(refreshToken.formEscaped)".utf8)
+        URLSession.shared.dataTask(with: req).resume()
     }
 
-    /// Returns a valid access token, refreshing it when it is about to expire.
-    func accessToken(forceRefresh: Bool = false) async throws -> String {
-        guard let current = tokens else { throw AuthError.notSignedIn }
-        if !forceRefresh, current.expiry > Date().addingTimeInterval(60) {
-            return current.accessToken
-        }
-        if let refreshTask {
-            return try await refreshTask.value.accessToken
-        }
-        let task = Task { try await self.refreshed(current) }
-        refreshTask = task
-        defer { refreshTask = nil }
-        do {
-            let new = try await task.value
-            // Signed out (or in again) while refreshing: don't bring the old session back
-            guard tokens?.refreshToken == current.refreshToken else { throw AuthError.notSignedIn }
-            tokens = new
-            return new.accessToken
-        } catch AuthError.server(let code, _) where code == "invalid_grant" {
-            if tokens?.refreshToken == current.refreshToken {
-                sessionMessage = AuthError.sessionExpired.localizedDescription
-                tokens = nil
-            }
-            throw AuthError.sessionExpired
-        }
-    }
-
-    private func refreshed(_ current: TokenSet) async throws -> TokenSet {
+    /// New tokens for `current`. Google answers `invalid_grant` when the sign-in is no longer valid.
+    func refreshed(_ current: TokenSet) async throws -> TokenSet {
         var form = [
             "client_id": trimmedClientID,
             "refresh_token": current.refreshToken,

@@ -90,6 +90,10 @@ Please open an issue on [GitHub](https://github.com/bernorieder/machen/issues).
 - [Building and releasing machen](docs/building.md): setting up a Google project, building, signing and notarizing.
 - [How machen works](docs/how-it-works.md): sign-in, syncing, notifications, the offline cache, and a map of the code.
 
+## License
+
+machen is released under the [MIT License](LICENSE).
+
 ## Credits
 
 The fist in the app icon and menu bar is [hand-fist](https://fontawesome.com/icons/hand-fist?s=solid) from [Font Awesome Free](https://fontawesome.com), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).

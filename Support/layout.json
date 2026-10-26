@@ -11,7 +11,7 @@
 
   "spacing": {
     "_about": "Settings → Display → Spacing presets",
-    "rowPadding": { "_about": "Above and below each event/task row", "compact": 2, "standard": 5, "roomy": 9 },
+    "rowPadding": { "_about": "Above and below each event/task row", "compact": 2, "standard": 4, "roomy": 7 },
     "lineGap": { "_about": "Between a row's lines: title, time, place, notes, due date", "compact": 0, "standard": 1.5, "roomy": 3 },
     "lineSpacing": { "_about": "Extra leading when a title wraps", "compact": 0, "standard": 1, "roomy": 3 }
   },
@@ -38,7 +38,7 @@
   "groupHeading": {
     "_about": "Day headings and list names",
     "topPadding": 6,
-    "bottomPadding": 5,
+    "bottomPadding": 4,
     "horizontalPadding": 6,
     "dotSize": 7,
     "dotGap": 6

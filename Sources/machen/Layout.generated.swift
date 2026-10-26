@@ -26,7 +26,7 @@ enum Layout {
         static let verticalPadding: CGFloat = 8.0
     }
     enum GroupHeading {
-        static let bottomPadding: CGFloat = 5.0
+        static let bottomPadding: CGFloat = 4.0
         static let dotGap: CGFloat = 6.0
         static let dotSize: CGFloat = 7.0
         static let horizontalPadding: CGFloat = 6.0
@@ -71,8 +71,8 @@ enum Layout {
         }
         enum RowPadding {
             static let compact: CGFloat = 2.0
-            static let roomy: CGFloat = 9.0
-            static let standard: CGFloat = 5.0
+            static let roomy: CGFloat = 7.0
+            static let standard: CGFloat = 4.0
         }
     }
     enum Task {

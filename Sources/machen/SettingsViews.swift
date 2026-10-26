@@ -120,8 +120,8 @@ struct SettingsView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            Divider()
+            .padding(.top, 18)
+            .padding(.bottom, 8)
             switch panel {
             case .general: general
             case .sources: sources
@@ -304,7 +304,6 @@ struct SettingsView: View {
                 Picker("Spacing", selection: $store.density) {
                     ForEach(RowDensity.allCases) { Text($0.label).tag($0) }
                 }
-                .pickerStyle(.segmented)
             }
         }
         .formStyle(.grouped)

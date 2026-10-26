@@ -518,3 +518,19 @@ final class Store: ObservableObject {
         await refreshTasks()
     }
 }
+
+#if SCREENSHOTS
+extension Store {
+    /// Fills the store with sample data for the README screenshots (Support/make-screenshots.sh).
+    /// Only compiled into that tool, never into the app.
+    func loadSample(calendars: [CalendarInfo], events: [CalendarEvent], taskLists: [TaskListInfo],
+                    tasks: [TaskItem], collapsedLists: [String], lastSync: Date) {
+        fetchedCalendars = calendars
+        fetchedTaskLists = taskLists
+        self.events = sortedEvents(events)
+        self.tasks = tasks
+        collapsed = Set(collapsedLists.map { "list:" + $0 })
+        self.lastSync = lastSync
+    }
+}
+#endif

@@ -65,7 +65,12 @@ final class GoogleAuth: ObservableObject {
     init() {
         clientID = UserDefaults.standard.string(forKey: "clientID") ?? ""
         clientSecret = UserDefaults.standard.string(forKey: "clientSecret") ?? ""
+        #if SCREENSHOTS
+        // The screenshot tool isn't signed as machen, so reading the keychain would prompt.
+        let stored: TokenSet? = nil
+        #else
         let stored = Keychain.get("tokens").flatMap { try? JSONDecoder().decode(TokenSet.self, from: $0) }
+        #endif
         tokens = stored
         isSignedIn = stored != nil
     }

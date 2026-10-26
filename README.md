@@ -6,7 +6,13 @@
 
 A small macOS menu bar app for Google Calendar and Google Tasks.
 
-Click the calendar icon in the menu bar to see:
+<p align="center">
+  <img src="docs/screenshots/agenda-light.png" width="270" alt="machen in light mode: today's events, then open tasks grouped by list, with subtasks indented">
+  <img src="docs/screenshots/agenda-dark.png" width="270" alt="machen in dark mode">
+  <img src="docs/screenshots/settings-light.png" width="270" alt="machen settings: days of events, multi-day events, task filter, menu bar icon, text sizes and spacing">
+</p>
+
+Click the icon in the menu bar to see:
 
 - **Events** from every calendar you have visible in Google Calendar, for today or for the next several days (see Settings). Events use their own colour if you gave them one in Google Calendar, and their calendar's colour otherwise.
 - **Open tasks**, grouped by task list. Each list has a colour bar, like calendar events do. Within a list, tasks are sorted by due date: overdue ones first (in red), undated ones last. Subtasks appear indented and in smaller type below their parent, in the order you gave them in Google Tasks.
@@ -49,6 +55,8 @@ open build/machen.app
 ```
 
 **Layout:** every spacing, size and font value of the main screen lives in `Support/layout.json`: row padding for each Spacing preset, heading paddings, indents, colour bars, and base font sizes. `build.sh` turns it into `Sources/machen/Layout.generated.swift` before compiling, so just edit the JSON and run `./build.sh`. A typo or wrong value stops the build and names the key or line. Keys starting with `_` are comments.
+
+**Screenshots:** `Support/make-screenshots.sh` renders the images in `docs/screenshots` from the app's real views with sample data, so no personal calendar data ends up in the repository.
 
 The app icon is drawn in code by `Support/make-icon.swift`. After changing it, run `swift Support/make-icon.swift` to regenerate `Support/AppIcon.icns`.
 

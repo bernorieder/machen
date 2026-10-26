@@ -50,14 +50,18 @@ struct AgendaView: View {
                     }
                     ForEach(store.taskGroups) { group in
                         if store.showsListNames {
-                            GroupHeader(title: group.list.title, color: group.color, addHelp: "New task in \(group.list.title)") {
-                                route = .task(TaskDraft(listID: group.list.id, day: store.day))
-                            }
+                            GroupHeader(title: group.list.title, color: group.color, addHelp: "New task in \(group.list.title)",
+                                        onAdd: { route = .task(TaskDraft(listID: group.list.id, day: store.day)) },
+                                        isCollapsed: group.isCollapsed,
+                                        hiddenCount: group.tasks.count,
+                                        onToggle: { withAnimation(.easeOut(duration: 0.15)) { store.toggleCollapsed(group.list) } })
                         }
-                        ForEach(group.tasks) { task in
-                            TaskRow(task: task, color: group.color) {
-                                route = .task(TaskDraft(task))
-                            }
+                        ForEach(group.visibleTasks) { task in
+                            TaskRow(task: task, color: group.color,
+                                    action: { route = .task(TaskDraft(task)) },
+                                    subtaskCount: task.isSubtask ? 0 : group.subtaskCounts[task.taskID] ?? 0,
+                                    subtasksCollapsed: store.subtasksCollapsed(task),
+                                    onToggleSubtasks: { withAnimation(.easeOut(duration: 0.15)) { store.toggleSubtasks(task) } })
                         }
                     }
                 }
@@ -186,6 +190,10 @@ struct TaskRow: View {
     let task: TaskItem
     let color: Color
     let action: () -> Void
+    /// For a parent task: how many subtasks it has, and whether they're hidden.
+    var subtaskCount = 0
+    var subtasksCollapsed = false
+    var onToggleSubtasks: (() -> Void)? = nil
     @ViewState private var checked = false
 
     var body: some View {
@@ -227,6 +235,18 @@ struct TaskRow: View {
             }
             .buttonStyle(.plain)
             .help("Edit task")
+
+            if subtaskCount > 0, let onToggleSubtasks {
+                Button(action: onToggleSubtasks) {
+                    DisclosureLabel(count: subtaskCount, collapsed: subtasksCollapsed)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(subtasksCollapsed ? "Show subtasks" : "Hide subtasks")
+            }
         }
         .padding(.leading, sub ? 28 : 10)
         .overlay(alignment: .leading) {
@@ -335,8 +355,31 @@ struct GroupHeader: View {
     let color: Color?
     let addHelp: String
     let onAdd: () -> Void
+    /// When set, clicking the title collapses or expands the group, shown with a disclosure arrow.
+    var isCollapsed: Bool? = nil
+    /// Shown next to the arrow while collapsed.
+    var hiddenCount = 0
+    var onToggle: (() -> Void)? = nil
 
     var body: some View {
+        HStack(spacing: 6) {
+            if let onToggle {
+                Button(action: onToggle) { titleLabel.contentShape(Rectangle()) }
+                    .buttonStyle(.plain)
+                    .help(isCollapsed == true ? "Show tasks" : "Hide tasks")
+            } else {
+                titleLabel
+            }
+            Spacer()
+            Button(action: onAdd) { Image(systemName: "plus").font(.caption) }
+                .buttonStyle(.borderless)
+                .help(addHelp)
+        }
+        .padding(.horizontal, 6)
+        .padding(.top, 6)
+    }
+
+    private var titleLabel: some View {
         HStack(spacing: 6) {
             if let color {
                 Circle()
@@ -345,15 +388,28 @@ struct GroupHeader: View {
             }
             Text(title)
                 .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
                 .lineLimit(1)
-            Spacer()
-            Button(action: onAdd) { Image(systemName: "plus").font(.caption) }
-                .buttonStyle(.borderless)
-                .help(addHelp)
+            if let isCollapsed {
+                DisclosureLabel(count: isCollapsed ? hiddenCount : nil, collapsed: isCollapsed)
+            }
         }
-        .padding(.horizontal, 6)
-        .padding(.top, 6)
+        .foregroundStyle(.secondary)
+    }
+}
+
+/// Arrow pointing right when collapsed and down when expanded, with an optional count before it.
+struct DisclosureLabel: View {
+    let count: Int?
+    let collapsed: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            if let count, count > 0 {
+                Text("\(count)").font(.caption2)
+            }
+            Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                .font(.system(size: 8, weight: .bold))
+        }
     }
 }
 

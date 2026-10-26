@@ -7,7 +7,7 @@ Click the calendar icon in the menu bar to see:
 - **Events** from every calendar you have visible in Google Calendar, for today or for the next several days (see Settings). Events use their own colour if you gave them one in Google Calendar, and their calendar's colour otherwise.
 - **Open tasks**, grouped by task list. Each list has a colour bar, like calendar events do. Within a list, tasks are sorted by due date: overdue ones first (in red), undated ones last. Subtasks appear indented and in smaller type below their parent, in the order you gave them in Google Tasks.
 
-You can add events and tasks with the **+** buttons. A list's own **+** adds a task to that list. To add a subtask, open a task and click **Add Subtask**. Click an event or task to edit or delete it. Click the circle next to a task to mark it as done. Events from calendars you can't edit open in Google Calendar instead.
+You can add events and tasks with the **+** buttons. A list's own **+** adds a task to that list. To add a subtask, open a task and click **Add Subtask**. Click a task list's name to hide or show its tasks; a collapsed list shows how many tasks it holds (`Work 5 ›`). A task with subtasks shows their number at the right (`2 ▾`); click it to hide or show them. What you collapse is remembered. Click an event or task to edit or delete it. Click the circle next to a task to mark it as done. Events from calendars you can't edit open in Google Calendar instead.
 
 Requires macOS 14 or later.
 

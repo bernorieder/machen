@@ -33,7 +33,13 @@ struct EventDay: Identifiable {
 struct TaskGroup: Identifiable {
     let list: TaskListInfo
     let color: Color
+    /// Every task that passes the filter, each parent followed by its subtasks.
     let tasks: [TaskItem]
+    /// What the agenda shows: nothing when the list is collapsed, and no subtasks under collapsed parents.
+    let visibleTasks: [TaskItem]
+    let isCollapsed: Bool
+    /// Parent task id → number of its subtasks in `tasks`.
+    let subtaskCounts: [String: Int]
 
     var id: String { list.id }
 }
@@ -95,6 +101,11 @@ final class Store: ObservableObject {
         didSet { UserDefaults.standard.set(density.rawValue, forKey: "density") }
     }
 
+    /// Collapsed task lists ("list:<id>") and parents with hidden subtasks ("task:<listID>/<taskID>").
+    @Published private var collapsed: Set<String> {
+        didSet { UserDefaults.standard.set(Array(collapsed), forKey: "collapsed") }
+    }
+
     /// Task list id → palette hex chosen in Settings.
     @Published private var listColors: [String: String] {
         didSet { UserDefaults.standard.set(listColors, forKey: "listColors") }
@@ -112,6 +123,7 @@ final class Store: ObservableObject {
         api = GoogleAPI(auth: auth)
         visibility = UserDefaults.standard.dictionary(forKey: "visibility") as? [String: Bool] ?? [:]
         listColors = UserDefaults.standard.dictionary(forKey: "listColors") as? [String: String] ?? [:]
+        collapsed = Set(UserDefaults.standard.stringArray(forKey: "collapsed") ?? [])
         density = UserDefaults.standard.string(forKey: "density").flatMap(RowDensity.init) ?? .standard
         taskFilter = UserDefaults.standard.string(forKey: "taskFilter").flatMap(TaskFilter.init) ?? .all
         menuBarIcon = UserDefaults.standard.string(forKey: "menuBarIcon") ?? "calendar"
@@ -147,8 +159,28 @@ final class Store: ObservableObject {
         taskLists.compactMap { list in
             let inList = tasks.filter { $0.listID == list.id }
             let items = taskFilter == .dueOnly ? TaskItem.withDueDates(inList) : inList
-            return items.isEmpty ? nil : TaskGroup(list: list, color: color(for: list), tasks: items)
+            guard !items.isEmpty else { return nil }
+            // Lists can only be collapsed while their headings are shown.
+            let listCollapsed = showsListNames && collapsed.contains("list:" + list.id)
+            let visible = listCollapsed ? [] : items.filter { task in
+                !(task.isSubtask && collapsed.contains("task:" + list.id + "/" + (task.parentID ?? "")))
+            }
+            let counts = Dictionary(grouping: items.filter(\.isSubtask)) { $0.parentID ?? "" }.mapValues(\.count)
+            return TaskGroup(list: list, color: color(for: list), tasks: items, visibleTasks: visible,
+                             isCollapsed: listCollapsed, subtaskCounts: counts)
         }
+    }
+
+    func toggleCollapsed(_ list: TaskListInfo) {
+        collapsed.formSymmetricDifference(["list:" + list.id])
+    }
+
+    func subtasksCollapsed(_ task: TaskItem) -> Bool {
+        collapsed.contains("task:" + task.id)
+    }
+
+    func toggleSubtasks(_ task: TaskItem) {
+        collapsed.formSymmetricDifference(["task:" + task.id])
     }
 
     var shownTaskCount: Int { taskGroups.reduce(0) { $0 + $1.tasks.count } }

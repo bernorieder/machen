@@ -8,8 +8,9 @@
 # enter their own client on first launch.
 #
 # Signing: uses the first "Developer ID Application" identity in your keychain (hardened
-# runtime, ready for notarization), or ad-hoc signing if there is none.
-# Override with SIGN_IDENTITY="..." ./build.sh
+# runtime), or ad-hoc signing if there is none. Override with SIGN_IDENTITY="..." ./build.sh
+# RELEASE=1 (set by release.sh) adds Apple's secure timestamp, which notarization needs; it's
+# left out otherwise because it needs a network connection.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -43,7 +44,8 @@ fi
 IDENTITY=${SIGN_IDENTITY:-$(security find-identity -v -p codesigning \
     | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -1)}
 if [[ -n "$IDENTITY" ]]; then
-    codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
+    TIMESTAMP=$([[ -n "${RELEASE:-}" ]] && echo "--timestamp" || echo "--timestamp=none")
+    codesign --force --options runtime "$TIMESTAMP" --sign "$IDENTITY" "$APP"
     echo "Signed with: $IDENTITY"
 else
     codesign --force --sign - "$APP"

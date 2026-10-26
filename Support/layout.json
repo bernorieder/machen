@@ -13,7 +13,7 @@
   },
 
   "spacing": {
-    "_about": "Settings → Display → Spacing presets",
+    "_about": "Settings → Styling → Spacing presets",
     "rowPadding": { "_about": "Above and below each event/task row", "compact": 2, "standard": 4, "roomy": 7 },
     "lineGap": { "_about": "Between a row's lines: title, time, place, notes, due date", "compact": 0, "standard": 1.5, "roomy": 3 },
     "lineSpacing": { "_about": "Extra leading when a title wraps", "compact": 0, "standard": 1, "roomy": 3 }
@@ -27,16 +27,15 @@
     "_shares": "Shares multiply the Spacing preset's row padding. openParentBottomShare: below a task whose subtasks are showing.",
     "hoverCornerRadius": 6,
     "hoverOpacity": 0.06,
-    "pressedOpacity": 0.12,
     "pastEventOpacity": 0.5
   },
 
   "sectionHeading": {
-    "_about": "EVENTS and TASKS",
+    "_about": "EVENTS and TASKS. spaceAboveDivider: between the last event and the line above TASKS.",
     "topPadding": 7,
     "bottomPadding": 2,
     "horizontalPadding": 6,
-    "extraSpaceAboveTasks": 10
+    "spaceAboveDivider": 10
   },
 
   "groupHeading": {
@@ -73,7 +72,7 @@
   "footer": { "horizontalPadding": 12, "verticalPadding": 8, "itemGap": 6 },
 
   "text": {
-    "_about": "Font sizes at Medium. Settings → Display → Small … Extra Large multiply them by the factors below, rounded to whole points.",
+    "_about": "Font sizes at Medium. Settings → Styling → Small … Extra large multiply them by the factors below, rounded to whole points.",
     "heading": 12,
     "itemName": 12,
     "taskCheckbox": 13,

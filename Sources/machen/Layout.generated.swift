@@ -54,14 +54,13 @@ enum Layout {
         static let hoverOpacity: CGFloat = 0.06
         static let openParentBottomShare: CGFloat = 0.2
         static let pastEventOpacity: CGFloat = 0.5
-        static let pressedOpacity: CGFloat = 0.12
         static let subtaskBottomShare: CGFloat = 0.5
         static let subtaskTopShare: CGFloat = 0.5
     }
     enum SectionHeading {
         static let bottomPadding: CGFloat = 2.0
-        static let extraSpaceAboveTasks: CGFloat = 10.0
         static let horizontalPadding: CGFloat = 6.0
+        static let spaceAboveDivider: CGFloat = 10.0
         static let topPadding: CGFloat = 7.0
     }
     enum Spacing {

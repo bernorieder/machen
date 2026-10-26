@@ -5,6 +5,10 @@ struct AgendaView: View {
     @Binding var route: Route
 
     var body: some View {
+        // Computed once per update: these are derived from all loaded events and tasks
+        let days = store.eventsByDay
+        let groups = store.taskGroups
+        let listNames = store.showsListNames
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Layout.List.stackGap) {
@@ -13,20 +17,22 @@ struct AgendaView: View {
                             .padding(.bottom, Layout.ErrorBanner.bottomSpace)
                     }
 
-                    SectionHeader(title: "Events", count: store.shownEventCount, addHelp: "New event",
+                    SectionHeader(title: "Events", count: Set(days.flatMap { $0.events.map(\.id) }).count,
+                                  addHelp: "New event", addDisabled: store.newEventDraft() == nil,
                                   onAdd: { if let draft = store.newEventDraft() { route = .event(draft) } },
                                   mode: Store.eventDaysLabel(store.eventDays),
                                   titleHelp: "Click to show: \(Store.eventDaysLabel(store.nextEventDays))",
                                   onTitleTap: { store.eventDays = store.nextEventDays })
-                    ForEach(store.eventsByDay) { group in
+                    ForEach(days) { group in
                         // A single day needs no day heading; the header already names it.
                         if store.eventDays > 1 {
-                            GroupHeader(title: Self.dayLabel(group.day), color: nil, addHelp: "New event on this day") {
+                            GroupHeader(title: Self.dayLabel(group.day), color: nil, addHelp: "New event on this day",
+                                        addDisabled: store.newEventDraft() == nil) {
                                 if let draft = store.newEventDraft(on: group.day) { route = .event(draft) }
                             }
                         }
                         if group.events.isEmpty {
-                            EmptyRow(text: store.isLoading ? "Loading…" : "No events")
+                            EmptyRow(text: store.isLoaded(group.day) ? "No events" : "Loading…")
                         }
                         ForEach(group.events) { event in
                             EventRow(event: event,
@@ -36,18 +42,21 @@ struct AgendaView: View {
                         }
                     }
 
-                    SectionHeader(title: "Tasks", count: store.shownTaskCount, addHelp: "New task",
+                    Divider()
+                        .padding(.top, Layout.SectionHeading.spaceAboveDivider)
+                        .padding(.horizontal, Layout.SectionHeading.horizontalPadding)
+                    SectionHeader(title: "Tasks", count: groups.reduce(0) { $0 + $1.tasks.count },
+                                  addHelp: "New task", addDisabled: store.newTaskDraft() == nil,
                                   onAdd: { if let draft = store.newTaskDraft() { route = .task(draft) } },
                                   mode: store.taskFilter.label,
                                   titleHelp: "Click to show: \(store.taskFilter.next.label)",
                                   onTitleTap: { store.taskFilter = store.taskFilter.next })
-                    .padding(.top, Layout.SectionHeading.extraSpaceAboveTasks)
-                    if store.taskGroups.isEmpty {
-                        EmptyRow(text: store.isLoading ? "Loading…"
+                    if groups.isEmpty {
+                        EmptyRow(text: store.lastSync == nil ? "Loading…"
                                  : store.taskFilter == .dueOnly ? "No open tasks with a due date" : "No open tasks")
                     }
-                    ForEach(store.taskGroups) { group in
-                        if store.showsListNames {
+                    ForEach(groups) { group in
+                        if listNames {
                             GroupHeader(title: group.list.title, color: group.color, addHelp: "New task in \(group.list.title)",
                                         onAdd: { route = .task(TaskDraft(listID: group.list.id, day: store.day)) },
                                         isCollapsed: group.isCollapsed,
@@ -86,25 +95,35 @@ struct AgendaView: View {
                     Button { Task { await store.refresh() } } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(.borderless)
                         .help("Refresh")
+                        .accessibilityLabel("Refresh")
                 }
             }
             .frame(width: 14)
             if let lastSync = store.lastSync {
-                Text("Synced \(lastSync.formatted(date: .omitted, time: .shortened))")
+                Text("Synced \(Self.syncedText(lastSync))")
             }
             Spacer()
             Button { route = .settings } label: { Image(systemName: "gearshape") }
                 .padding(.trailing, Layout.Footer.itemGap)
                 .buttonStyle(.borderless)
                 .help("Settings")
+                .accessibilityLabel("Settings")
             Button { NSApp.terminate(nil) } label: { Image(systemName: "power") }
                 .buttonStyle(.borderless)
                 .help("Quit machen")
+                .accessibilityLabel("Quit machen")
         }
         .font(.caption)
         .foregroundStyle(.secondary)
         .padding(.horizontal, Layout.Footer.horizontalPadding)
         .padding(.vertical, Layout.Footer.verticalPadding)
+    }
+
+    /// "14:32" today; with the date when the shown data is older, for example when offline.
+    static func syncedText(_ date: Date) -> String {
+        Calendar.current.isDateInToday(date)
+            ? date.formatted(date: .omitted, time: .shortened)
+            : date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
     }
 
     static func dayLabel(_ day: Date) -> String {
@@ -128,17 +147,17 @@ struct AgendaView: View {
 
 struct EventRow: View {
     @Environment(\.rowDensity) private var density
+    @Environment(\.textSizes) private var sizes
     let event: CalendarEvent
     /// Marks the start-day appearance of a multi-day event that is shown only once.
     var startsHere = false
     let action: () -> Void
-    @Environment(\.textSizes) private var sizes
 
     var body: some View {
         HStack(alignment: .center, spacing: 6) {
             Button(action: action) {
                 VStack(alignment: .leading, spacing: density.lineGap) {
-                    Text(event.title)
+                    Text(event.displayTitle)
                         .font(sizes.name.font(Layout.Text.itemName))
                         .strikethrough(event.declined)
                         .lineLimit(2)
@@ -194,9 +213,12 @@ struct JoinButton: View {
     let start: Date
     let end: Date
 
+    private var liveFrom: Date { start.addingTimeInterval(-10 * 60) }
+
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            let live = context.date >= start.addingTimeInterval(-10 * 60) && context.date < end
+        // Redraws only when it turns prominent and when the call ends
+        TimelineView(.explicit([liveFrom, end])) { context in
+            let live = context.date >= liveFrom && context.date < end
             Button("Join") { NSWorkspace.shared.open(url) }
                 .buttonStyle(JoinButtonStyle(live: live))
                 .help("Join the video call (\(url.host ?? url.absoluteString))")
@@ -224,6 +246,7 @@ struct JoinButtonStyle: ButtonStyle {
 struct TaskRow: View {
     @EnvironmentObject private var store: Store
     @Environment(\.rowDensity) private var density
+    @Environment(\.textSizes) private var sizes
     let task: TaskItem
     let color: Color
     let action: () -> Void
@@ -231,13 +254,16 @@ struct TaskRow: View {
     var subtaskCount = 0
     var subtasksCollapsed = false
     var onToggleSubtasks: (() -> Void)? = nil
-    @Environment(\.textSizes) private var sizes
     @ViewState private var checked = false
+
+    private var title: String { task.title.isEmpty ? "(No title)" : task.title }
 
     var body: some View {
         let sub = task.isSubtask
         HStack(alignment: .firstTextBaseline, spacing: Layout.Task.checkboxGap) {
             Button {
+                // A quick second click would complete it twice
+                guard !checked else { return }
                 checked = true
                 Task {
                     try? await Task.sleep(for: .milliseconds(350))
@@ -250,11 +276,12 @@ struct TaskRow: View {
                     .foregroundStyle(checked ? Color.accentColor : Color.secondary)
             }
             .buttonStyle(.plain)
-            .help(sub ? "Mark completed" : "Mark completed (with its subtasks)")
+            .help(subtaskCount > 0 ? "Mark completed, with its subtasks" : "Mark completed")
+            .accessibilityLabel("Complete “\(title)”")
 
             Button(action: action) {
                 VStack(alignment: .leading, spacing: density.lineGap) {
-                    Text(task.title.isEmpty ? "(No title)" : task.title)
+                    Text(title)
                         .font(sub ? sizes.detail.font(Layout.Text.subtaskName) : sizes.name.font(Layout.Text.itemName))
                         .strikethrough(checked)
                         .lineLimit(2)
@@ -284,6 +311,7 @@ struct TaskRow: View {
                 }
                 .buttonStyle(.plain)
                 .help(subtasksCollapsed ? "Show subtasks" : "Hide subtasks")
+                .accessibilityLabel(subtasksCollapsed ? "Show \(subtaskCount) subtasks" : "Hide \(subtaskCount) subtasks")
             }
         }
         .padding(.leading, sub ? Layout.Bar.subtaskInset : Layout.Bar.textInset)
@@ -320,10 +348,13 @@ struct SectionHeader: View {
     let title: String
     let count: Int
     let addHelp: String
+    /// The add button does nothing yet, for example before anything has loaded.
+    var addDisabled = false
     let onAdd: () -> Void
-    /// When set, the title becomes a button showing this mode; clicking it calls `onTitleTap`.
+    /// Shown after the title, for example "· Today".
     var mode: String? = nil
     var titleHelp = ""
+    /// When set, the title becomes a button.
     var onTitleTap: (() -> Void)? = nil
     @Environment(\.textSizes) private var sizes
 
@@ -339,7 +370,9 @@ struct SectionHeader: View {
             Spacer()
             Button(action: onAdd) { Image(systemName: "plus") }
                 .buttonStyle(.borderless)
-                .help(addHelp)
+                .disabled(addDisabled)
+                .help(addDisabled ? "Available once machen has loaded your data" : addHelp)
+                .accessibilityLabel(addHelp)
         }
         .padding(.horizontal, Layout.SectionHeading.horizontalPadding)
         .padding(.top, Layout.SectionHeading.topPadding)
@@ -364,11 +397,12 @@ struct SectionHeader: View {
 }
 
 struct EmptyRow: View {
+    @Environment(\.textSizes) private var sizes
     let text: String
 
     var body: some View {
         Text(text)
-            .font(.callout)
+            .font(sizes.name.font(Layout.Text.itemName))
             .foregroundStyle(.tertiary)
             .padding(.horizontal, Layout.EmptyRow.horizontalPadding)
             .padding(.vertical, Layout.EmptyRow.verticalPadding)
@@ -428,6 +462,8 @@ struct ErrorBanner: View {
             Spacer(minLength: 0)
             Button(action: onDismiss) { Image(systemName: "xmark") }
                 .buttonStyle(.borderless)
+                .help("Dismiss")
+                .accessibilityLabel("Dismiss")
         }
         .padding(8)
         .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.12)))
@@ -439,6 +475,7 @@ struct GroupHeader: View {
     let title: String
     let color: Color?
     let addHelp: String
+    var addDisabled = false
     let onAdd: () -> Void
     /// When set, clicking the title collapses or expands the group, shown with a disclosure arrow.
     var isCollapsed: Bool? = nil
@@ -459,7 +496,9 @@ struct GroupHeader: View {
             Spacer()
             Button(action: onAdd) { Image(systemName: "plus").font(.caption) }
                 .buttonStyle(.borderless)
+                .disabled(addDisabled)
                 .help(addHelp)
+                .accessibilityLabel(addHelp)
         }
         .padding(.horizontal, Layout.GroupHeading.horizontalPadding)
         .padding(.top, Layout.GroupHeading.topPadding)
@@ -506,7 +545,6 @@ struct DisclosureLabel: View {
 
 /// Shared row padding and hover highlight.
 struct RowChrome: ViewModifier {
-    let pressed: Bool
     /// Fractions of the spacing setting's row padding to use above and below; subtask rows,
     /// and parents with their subtasks showing, use less.
     let topScale: CGFloat
@@ -514,8 +552,7 @@ struct RowChrome: ViewModifier {
     @Environment(\.rowDensity) private var density
     @ViewState private var hovering = false
 
-    init(pressed: Bool = false, topScale: CGFloat = 1, bottomScale: CGFloat = 1) {
-        self.pressed = pressed
+    init(topScale: CGFloat = 1, bottomScale: CGFloat = 1) {
         self.topScale = topScale
         self.bottomScale = bottomScale
     }
@@ -529,8 +566,7 @@ struct RowChrome: ViewModifier {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: Layout.Row.hoverCornerRadius)
-                    .fill(Color.primary.opacity(pressed ? Layout.Row.pressedOpacity
-                                                : hovering ? Layout.Row.hoverOpacity : 0))
+                    .fill(Color.primary.opacity(hovering ? Layout.Row.hoverOpacity : 0))
             )
             .contentShape(Rectangle())
             .onHover { hovering = $0 }

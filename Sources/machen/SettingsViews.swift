@@ -15,6 +15,11 @@ struct SignInView: View {
             }
             Text("Connect your Google account to see your upcoming events and open tasks.")
                 .foregroundStyle(.secondary)
+            if let message = auth.sessionMessage {
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+            }
             if !auth.hasBundledClient {
                 Text("This build has no Google client built in. You need an OAuth client of type “Desktop app” from Google Cloud Console, with the Google Calendar API and Google Tasks API enabled. The README walks through it.")
                     .font(.caption)
@@ -65,7 +70,7 @@ struct SignInView: View {
                         .font(.caption)
                 }
                 Spacer()
-                Button("Quit") { NSApp.terminate(nil) }
+                Button("Quit machen") { NSApp.terminate(nil) }
                     .controlSize(.small)
             }
         }
@@ -85,7 +90,8 @@ struct SettingsView: View {
     @EnvironmentObject private var auth: GoogleAuth
     @EnvironmentObject private var store: Store
     @ViewState private var panel: SettingsPanel
-    @ViewState private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    /// Read when Settings appears (querying it on every redraw would be wasteful).
+    @ViewState private var launchStatus = SMAppService.Status.notRegistered
     @ViewState private var launchError: String?
     let onClose: () -> Void
 
@@ -107,6 +113,7 @@ struct SettingsView: View {
             HStack {
                 Button(action: onClose) { Label("Back", systemImage: "chevron.left") }
                     .buttonStyle(.borderless)
+                    .keyboardShortcut(.cancelAction)
                 Spacer()
                 Text("Settings").font(.headline)
                 Spacer()
@@ -128,19 +135,21 @@ struct SettingsView: View {
             case .styling: styling
             }
         }
-        .onChange(of: launchAtLogin) { _, enabled in
-            do {
-                if enabled {
-                    try SMAppService.mainApp.register()
-                } else {
-                    try SMAppService.mainApp.unregister()
-                }
-                launchError = nil
-            } catch {
-                launchError = error.localizedDescription
-                launchAtLogin = SMAppService.mainApp.status == .enabled
+        .onAppear { launchStatus = SMAppService.mainApp.status }
+    }
+
+    private func setLaunchAtLogin(_ on: Bool) {
+        do {
+            if on {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
             }
+            launchError = nil
+        } catch {
+            launchError = error.localizedDescription
         }
+        launchStatus = SMAppService.mainApp.status
     }
 
     // MARK: General: what's shown, app behaviour, links, account
@@ -179,7 +188,19 @@ struct SettingsView: View {
                 }
             }
             Section("App") {
-                Toggle("Launch at login", isOn: $launchAtLogin)
+                Toggle("Launch at login", isOn: Binding(
+                    get: { launchStatus == .enabled || launchStatus == .requiresApproval },
+                    set: setLaunchAtLogin))
+                if launchStatus == .requiresApproval {
+                    HStack {
+                        Text("macOS needs your approval in System Settings → Login Items.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Open") { SMAppService.openSystemSettingsLoginItems() }
+                            .controlSize(.small)
+                    }
+                }
                 if let launchError {
                     Text(launchError).font(.caption).foregroundStyle(.red)
                 }
@@ -192,7 +213,8 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button("Open") {
-                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=io.github.bernorieder.machen")!)
+                            let id = Bundle.main.bundleIdentifier ?? ""
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)")!)
                         }
                         .controlSize(.small)
                     }
@@ -220,16 +242,18 @@ struct SettingsView: View {
     private var sources: some View {
         Form {
             Section {
-                ForEach(store.calendars) { cal in
-                    ReorderRow(id: cal.id, onDrop: { store.moveCalendar($0, onto: cal.id) }) {
-                        Toggle(isOn: Binding(get: { store.isShown(cal) }, set: { store.setShown(cal, $0) })) {
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(Color(hex: cal.backgroundColor) ?? .accentColor)
-                                    .frame(width: 8, height: 8)
-                                Text(cal.name).lineLimit(1)
-                            }
-                        }
+                let calendars = store.calendars
+                ForEach(Array(calendars.enumerated()), id: \.element.id) { index, cal in
+                    ReorderRow(id: cal.id, onDrop: { store.moveCalendar($0, onto: cal.id) },
+                               onMoveUp: index > 0 ? { store.moveCalendar(cal.id, onto: calendars[index - 1].id) } : nil,
+                               onMoveDown: index < calendars.count - 1
+                                   ? { store.moveCalendar(cal.id, onto: calendars[index + 1].id) } : nil) {
+                        // The calendar's colour comes from Google Calendar. The padding lines it up
+                        // with the list colours below, which are menus with a little padding of their own.
+                        Image(nsImage: ListPalette.swatch(cal.backgroundColor ?? "#888888"))
+                            .padding(.horizontal, 3)
+                            .accessibilityHidden(true)
+                        Toggle(cal.name, isOn: Binding(get: { store.isShown(cal) }, set: { store.setShown(cal, $0) }))
                     }
                 }
             } header: {
@@ -240,8 +264,12 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Section {
-                ForEach(store.taskLists) { list in
-                    ReorderRow(id: list.id, onDrop: { store.moveTaskList($0, onto: list.id) }) {
+                let lists = store.taskLists
+                ForEach(Array(lists.enumerated()), id: \.element.id) { index, list in
+                    ReorderRow(id: list.id, onDrop: { store.moveTaskList($0, onto: list.id) },
+                               onMoveUp: index > 0 ? { store.moveTaskList(list.id, onto: lists[index - 1].id) } : nil,
+                               onMoveDown: index < lists.count - 1
+                                   ? { store.moveTaskList(list.id, onto: lists[index + 1].id) } : nil) {
                         Menu {
                             ForEach(ListPalette.colors, id: \.hex) { color in
                                 Button {
@@ -256,7 +284,8 @@ struct SettingsView: View {
                         .menuStyle(.borderlessButton)
                         .menuIndicator(.hidden)
                         .fixedSize()
-                        .help("Choose color")
+                        .help("Choose colour")
+                        .accessibilityLabel("Colour of \(list.title)")
                         Toggle(list.title, isOn: Binding(get: { store.isShown(list) }, set: { store.setShown(list, $0) }))
                     }
                 }
@@ -315,12 +344,18 @@ struct SettingsView: View {
 struct ReorderRow<Content: View>: View {
     let id: String
     let onDrop: (_ draggedID: String) -> Void
+    /// Offered as accessibility actions, since dragging isn't possible with VoiceOver.
+    let onMoveUp: (() -> Void)?
+    let onMoveDown: (() -> Void)?
     let content: Content
     @ViewState private var isTargeted = false
 
-    init(id: String, onDrop: @escaping (_ draggedID: String) -> Void, @ViewBuilder content: () -> Content) {
+    init(id: String, onDrop: @escaping (_ draggedID: String) -> Void, onMoveUp: (() -> Void)? = nil,
+         onMoveDown: (() -> Void)? = nil, @ViewBuilder content: () -> Content) {
         self.id = id
         self.onDrop = onDrop
+        self.onMoveUp = onMoveUp
+        self.onMoveDown = onMoveDown
         self.content = content()
     }
 
@@ -344,5 +379,9 @@ struct ReorderRow<Content: View>: View {
                 .fill(Color.accentColor.opacity(isTargeted ? 0.18 : 0))
                 .padding(-4)
         )
+        .accessibilityActions {
+            if let onMoveUp { Button("Move up", action: onMoveUp) }
+            if let onMoveDown { Button("Move down", action: onMoveDown) }
+        }
     }
 }

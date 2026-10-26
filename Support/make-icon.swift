@@ -58,6 +58,7 @@ func png(size: Int) -> Data {
 }
 
 let iconset = FileManager.default.temporaryDirectory.appendingPathComponent("AppIcon.iconset")
+defer { try? FileManager.default.removeItem(at: iconset) }
 try? FileManager.default.removeItem(at: iconset)
 try! FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
 for points in [16, 32, 128, 256, 512] {
@@ -71,4 +72,9 @@ iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
 iconutil.arguments = ["-c", "icns", iconset.path, "-o", support.appendingPathComponent("AppIcon.icns").path]
 try! iconutil.run()
 iconutil.waitUntilExit()
-print(iconutil.terminationStatus == 0 ? "Wrote Support/AppIcon.icns and Support/AppIcon.png" : "iconutil failed")
+guard iconutil.terminationStatus == 0 else {
+    try? FileManager.default.removeItem(at: iconset)
+    FileHandle.standardError.write(Data("iconutil failed\n".utf8))
+    exit(1)
+}
+print("Wrote Support/AppIcon.icns and Support/AppIcon.png")

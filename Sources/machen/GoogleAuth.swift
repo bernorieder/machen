@@ -48,6 +48,8 @@ final class GoogleAuth: ObservableObject {
     }
     @Published private(set) var isSignedIn: Bool
     @Published private(set) var isSigningIn = false
+    /// Why the user was signed out without asking (an expired session), shown on the sign-in screen.
+    @Published private(set) var sessionMessage: String?
 
     private var tokens: TokenSet? {
         didSet {
@@ -55,7 +57,7 @@ final class GoogleAuth: ObservableObject {
             if let tokens, let data = try? JSONEncoder().encode(tokens) {
                 Keychain.set(data, for: "tokens")
             } else {
-                Keychain.delete("tokens")
+                Keychain.clear("tokens")
             }
         }
     }
@@ -137,6 +139,7 @@ final class GoogleAuth: ObservableObject {
         tokens = TokenSet(accessToken: response.access_token,
                           refreshToken: refresh,
                           expiry: Date().addingTimeInterval(response.expires_in))
+        sessionMessage = nil
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -169,10 +172,15 @@ final class GoogleAuth: ObservableObject {
         defer { refreshTask = nil }
         do {
             let new = try await task.value
+            // Signed out (or in again) while refreshing: don't bring the old session back
+            guard tokens?.refreshToken == current.refreshToken else { throw AuthError.notSignedIn }
             tokens = new
             return new.accessToken
         } catch AuthError.server(let code, _) where code == "invalid_grant" {
-            tokens = nil
+            if tokens?.refreshToken == current.refreshToken {
+                sessionMessage = AuthError.sessionExpired.localizedDescription
+                tokens = nil
+            }
             throw AuthError.sessionExpired
         }
     }
@@ -272,6 +280,10 @@ final class LoopbackServer {
             portContinuation?.resume(throwing: error)
             portContinuation = nil
             finish(.failure(error))
+        case .cancelled:
+            // Stopped (sign-in cancelled) before the listener was ready
+            portContinuation?.resume(throwing: CancellationError())
+            portContinuation = nil
         default:
             break
         }
@@ -293,9 +305,10 @@ final class LoopbackServer {
         }
         let isCallback = params["code"] != nil || params["error"] != nil
 
-        let body = isCallback
-            ? "<html><body style=\"font-family:-apple-system;padding:40px\"><h2>machen is connected.</h2><p>You can close this tab and click the menu bar icon.</p></body></html>"
-            : ""
+        let message = params["error"] == nil
+            ? "<h2>machen is connected.</h2><p>You can close this tab and click the menu bar icon.</p>"
+            : "<h2>machen isn't connected.</h2><p>Sign-in was cancelled or not allowed. You can close this tab and try again from the menu bar icon.</p>"
+        let body = isCallback ? "<html><body style=\"font-family:-apple-system;padding:40px\">\(message)</body></html>" : ""
         let status = isCallback ? "200 OK" : "404 Not Found"
         let response = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
         connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })

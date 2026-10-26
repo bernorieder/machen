@@ -10,12 +10,9 @@ struct ReminderNotification: Equatable {
     let meetingURL: URL?
 
     static let idPrefix = "reminder:"
-
-    /// Events to schedule reminders for: the loaded days (refreshed every minute, so the fresher
-    /// source there), plus events from the 4-week window that start after them.
-    static func sources(loaded: [CalendarEvent], window: [CalendarEvent], loadedEnd: Date) -> [CalendarEvent] {
-        loaded + window.filter { $0.start >= loadedEnd }
-    }
+    /// At most this many reminders are scheduled at a time (the soonest), well below macOS's limit
+    /// on pending notifications per app.
+    static let maximumScheduled = 60
 
     /// Notifications for the popup reminders of `events` that are still ahead (declined events skipped).
     static func upcoming(for events: [CalendarEvent], now: Date = Date()) -> [ReminderNotification] {
@@ -25,7 +22,7 @@ struct ReminderNotification: Equatable {
                 guard fire > now else { return nil }
                 return ReminderNotification(
                     id: "\(idPrefix)\(event.id)@\(Int(event.start.timeIntervalSince1970))-\(minutes)",
-                    fireDate: fire, title: event.title, body: body(for: event, minutes: minutes),
+                    fireDate: fire, title: event.displayTitle, body: body(for: event, minutes: minutes),
                     meetingURL: event.meetingURL)
             }
         }
@@ -50,12 +47,16 @@ struct ReminderNotification: Equatable {
         return parts.joined(separator: " · ")
     }
 
-    private static func duration(minutes: Int) -> String {
+    private static let durationFormatter: DateComponentsFormatter = {
         let f = DateComponentsFormatter()
         f.allowedUnits = [.day, .hour, .minute]
         f.unitsStyle = .full
         f.maximumUnitCount = 2
-        return f.string(from: TimeInterval(minutes * 60)) ?? "\(minutes) minutes"
+        return f
+    }()
+
+    private static func duration(minutes: Int) -> String {
+        durationFormatter.string(from: TimeInterval(minutes * 60)) ?? "\(minutes) minutes"
     }
 }
 
@@ -76,12 +77,18 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     nonisolated static let meetingKey = "meetingURL"
 
     private let center = UNUserNotificationCenter.current()
+    /// What machen scheduled, by id, so unchanged reminders aren't handed to macOS again.
+    private var scheduled: [String: ReminderNotification] = [:]
+    /// A permission request in progress, shared by everyone asking meanwhile.
+    private var authorizationRequest: Task<Bool, Never>?
 
     private override init() {
         super.init()
         center.delegate = self
         // Remove what's still scheduled when machen quits, so nothing outdated fires while it's
         // closed (macOS would deliver it without asking machen). Launching schedules them again.
+        // Removing everything is fine: machen schedules nothing but reminders, and quitting can't
+        // wait for the asynchronous list of pending ones.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
                                                queue: .main) { _ in
             UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
@@ -96,17 +103,26 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         await center.notificationSettings().authorizationStatus
     }
 
-    /// Asks macOS for permission (it only shows the prompt the first time).
+    /// Asks macOS for permission (it only shows the prompt the first time). The answer may take
+    /// as long as the user does, so callers asking meanwhile share one request.
     func requestAuthorization() async -> Bool {
-        (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+        if let authorizationRequest { return await authorizationRequest.value }
+        let center = center
+        let request = Task { (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false }
+        authorizationRequest = request
+        defer { authorizationRequest = nil }
+        return await request.value
     }
 
-    /// Replaces machen's pending reminder notifications with `reminders`.
+    /// Makes machen's pending reminders match `reminders` (the soonest `maximumScheduled`):
+    /// removes the ones no longer wanted and adds only new or changed ones.
     func schedule(_ reminders: [ReminderNotification]) async {
-        let wanted = Set(reminders.map(\.id))
-        let stale = await pendingReminderIDs().filter { !wanted.contains($0) }
+        let wanted = Array(reminders.prefix(ReminderNotification.maximumScheduled))
+        let wantedIDs = Set(wanted.map(\.id))
+        let stale = await pendingReminderIDs().filter { !wantedIDs.contains($0) }
         center.removePendingNotificationRequests(withIdentifiers: stale)
-        for reminder in reminders {
+        scheduled = scheduled.filter { wantedIDs.contains($0.key) }
+        for reminder in wanted where scheduled[reminder.id] != reminder {
             let content = UNMutableNotificationContent()
             content.title = reminder.title
             content.body = reminder.body
@@ -117,13 +133,20 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
                 content.userInfo = [Self.meetingKey: url.absoluteString]
             }
             let when = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: reminder.fireDate)
-            // Adding with an existing id replaces it, which picks up edited titles and times
-            try? await center.add(UNNotificationRequest(identifier: reminder.id, content: content,
-                                                        trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: false)))
+            // The id includes the start time, so a moved event gets a new request; adding with an
+            // existing id replaces it, which picks up an edited title or place
+            do {
+                try await center.add(UNNotificationRequest(identifier: reminder.id, content: content,
+                                                           trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: false)))
+                scheduled[reminder.id] = reminder
+            } catch {
+                scheduled[reminder.id] = nil
+            }
         }
     }
 
     func removeAll() async {
+        scheduled = [:]
         center.removePendingNotificationRequests(withIdentifiers: await pendingReminderIDs())
     }
 

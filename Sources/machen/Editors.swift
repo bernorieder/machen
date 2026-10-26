@@ -9,8 +9,10 @@ struct EditorHeader: View {
 
     var body: some View {
         HStack {
+            // Locked while saving, so a save that finishes later can't close whatever was opened next
             Button("Cancel", action: onCancel)
                 .keyboardShortcut(.cancelAction)
+                .disabled(saving)
             Spacer()
             Text(title).font(.headline)
             Spacer()
@@ -24,22 +26,28 @@ struct EditorHeader: View {
     }
 }
 
-/// Inline confirmation (alerts and dialogs tend to dismiss menu bar windows).
+/// Inline confirmation (alerts and dialogs tend to dismiss menu bar windows). Give it an `.id`
+/// that changes with what it deletes, so a pending confirmation doesn't carry over.
 struct DeleteRow: View {
     let label: String
+    /// The question asked before deleting, naming what goes.
+    let prompt: String
+    var disabled = false
     let onDelete: () -> Void
     @ViewState private var confirming = false
 
     var body: some View {
         if confirming {
             HStack {
-                Text("Delete permanently?")
+                Text(prompt)
                 Spacer()
                 Button("Cancel") { confirming = false }
                 Button("Delete", role: .destructive, action: onDelete)
+                    .disabled(disabled)
             }
         } else {
             Button(label, role: .destructive) { confirming = true }
+                .disabled(disabled)
         }
     }
 }
@@ -77,7 +85,7 @@ struct EventEditor: View {
                         .pickerStyle(.segmented)
                     } footer: {
                         Text(editsSeries
-                             ? "Changes the whole series. A new time or date shifts every event by the same amount."
+                             ? "Changes the whole series. A new time moves every event by the same amount; to move the series to other days, use Google Calendar."
                              : "This is a repeating event. Changes apply only to this one.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -118,7 +126,10 @@ struct EventEditor: View {
                 }
                 if !draft.isNew {
                     Section {
-                        DeleteRow(label: editsSeries ? "Delete All Events" : "Delete Event", onDelete: delete)
+                        DeleteRow(label: editsSeries ? "Delete All Events" : "Delete Event",
+                                  prompt: editsSeries ? "Delete every event in this series?" : "Delete this event?",
+                                  disabled: saving, onDelete: delete)
+                            .id(scope)
                     }
                 }
             }
@@ -131,13 +142,17 @@ struct EventEditor: View {
             }
         }
         .onChange(of: draft.isAllDay) { _, allDay in
-            guard !allDay else { return }
-            // Coming from all-day, give the event a sensible time slot.
-            if draft.start == draft.start.startOfDay {
-                draft.start = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: draft.start) ?? draft.start
-            }
-            if draft.end <= draft.start {
-                draft.end = draft.start.addingTimeInterval(3600)
+            // An all-day event's end is its last day; a timed event's end is the exact time it ends
+            if allDay {
+                // 22:00 to midnight stays on its first day
+                draft.end = max(draft.start.startOfDay, draft.end.addingTimeInterval(-1).startOfDay)
+            } else {
+                // Give it a sensible slot: 9:00 on the first day, one hour, ending on the last day
+                if draft.start == draft.start.startOfDay {
+                    draft.start = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: draft.start) ?? draft.start
+                }
+                let timeOfDay = draft.start.timeIntervalSince(draft.start.startOfDay)
+                draft.end = draft.end.startOfDay.addingTimeInterval(timeOfDay + 3600)
             }
         }
     }
@@ -207,6 +222,10 @@ struct TaskEditor: View {
         return draft.isNew ? "New Task" : "Edit Task"
     }
 
+    private var hasSubtasks: Bool {
+        draft.taskID.map { id in store.tasks.contains { $0.listID == draft.listID && $0.parentID == id } } ?? false
+    }
+
     private var parentTitle: String {
         let parent = store.tasks.first { $0.listID == draft.listID && $0.taskID == draft.parentID }
         return parent.map { $0.title.isEmpty ? "(No title)" : $0.title } ?? "Another task"
@@ -241,7 +260,7 @@ struct TaskEditor: View {
                 }
                 Section {
                     TextField("Notes", text: $draft.notes, prompt: Text("Optional"), axis: .vertical)
-                        .lineLimit(3...8)
+                        .lineLimit(3...6)
                 }
                 if let error {
                     Text(error).foregroundStyle(.red).font(.caption)
@@ -252,15 +271,13 @@ struct TaskEditor: View {
                             .disabled(saving)
                     }
                 }
-                if let taskID = draft.taskID {
+                if !draft.isNew {
                     Section {
-                        Button(draft.isSubtask ? "Mark Completed" : "Mark Completed (with Subtasks)") {
-                            Task {
-                                await store.complete(listID: draft.listID, taskID: taskID)
-                                onClose()
-                            }
-                        }
-                        DeleteRow(label: "Delete Task", onDelete: delete)
+                        Button(hasSubtasks ? "Mark Completed (with Subtasks)" : "Mark Completed", action: complete)
+                            .disabled(saving)
+                        DeleteRow(label: "Delete Task",
+                                  prompt: hasSubtasks ? "Delete this task and its subtasks?" : "Delete this task?",
+                                  disabled: saving, onDelete: delete)
                     }
                 }
             }
@@ -274,6 +291,23 @@ struct TaskEditor: View {
         Task {
             do {
                 try await store.save(draft)
+                onClose()
+            } catch {
+                self.error = error.localizedDescription
+            }
+            saving = false
+        }
+    }
+
+    /// Saves pending edits first, so they aren't lost, then completes the task.
+    private func complete() {
+        guard let taskID = draft.taskID else { return }
+        saving = true
+        error = nil
+        Task {
+            do {
+                if draft != original { try await store.save(draft) }
+                await store.complete(listID: draft.listID, taskID: taskID)
                 onClose()
             } catch {
                 self.error = error.localizedDescription

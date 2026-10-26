@@ -113,8 +113,9 @@ enum Keychain {
         }
     }
 
-    static func delete(_ account: String) {
-        SecItemDelete(query(account) as CFDictionary)
+    /// Empties the item instead of deleting it, which would ask for permission (see `set`).
+    static func clear(_ account: String) {
+        SecItemUpdate(query(account) as CFDictionary, [kSecValueData as String: Data()] as CFDictionary)
     }
 }
 
@@ -144,14 +145,19 @@ enum ListPalette {
         ("Flamingo", "#E67C73"), ("Lavender", "#7986CB"), ("Graphite", "#616161"),
     ]
 
-    /// A non-template color dot; menus on macOS drop the color of tinted SF Symbols and shapes.
-    static func swatch(_ hex: String, size: CGFloat = 10) -> NSImage {
-        let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+    private static var swatches: [String: NSImage] = [:]
+
+    /// A non-template colour dot; menus on macOS drop the colour of tinted SF Symbols and shapes.
+    /// Made once per colour, since Settings shows the whole palette for every list.
+    static func swatch(_ hex: String) -> NSImage {
+        if let image = swatches[hex] { return image }
+        let image = NSImage(size: NSSize(width: 10, height: 10), flipped: false) { rect in
             NSColor(Color(hex: hex) ?? .gray).setFill()
             NSBezierPath(ovalIn: rect).fill()
             return true
         }
         image.isTemplate = false
+        swatches[hex] = image
         return image
     }
 }
@@ -287,7 +293,7 @@ enum TextSize: String, CaseIterable, Identifiable {
         case .small: "Small"
         case .medium: "Medium"
         case .large: "Large"
-        case .extraLarge: "Extra Large"
+        case .extraLarge: "Extra large"
         }
     }
 

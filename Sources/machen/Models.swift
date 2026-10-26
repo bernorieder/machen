@@ -37,6 +37,8 @@ struct GEvent: Decodable {
     struct Time: Decodable {
         let date: String?
         let dateTime: String?
+        /// The time zone a timed event (or a series) was set in, for example "America/New_York".
+        let timeZone: String?
     }
 
     struct Attendee: Decodable {
@@ -97,8 +99,11 @@ enum MeetingLink {
         return [e.location, e.description].compactMap { $0 }.lazy.compactMap(firstLink).first
     }
 
+    /// One detector for all events; creating one per text is comparatively slow.
+    private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
     static func firstLink(in text: String) -> URL? {
-        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return nil }
+        guard let detector else { return nil }
         let matches = detector.matches(in: text, range: NSRange(text.startIndex..., in: text))
         return matches.lazy.compactMap(\.url).first { url in
             guard let host = url.host?.lowercased(), url.scheme == "https" || url.scheme == "http" else { return false }
@@ -177,6 +182,8 @@ struct CalendarEvent: Identifiable, Hashable, Codable {
     let reminderMinutes: [Int]
 
     var id: String { calendarID + "/" + eventID }
+    /// The title as shown; an untitled event reads "(No title)", as in Google Calendar.
+    var displayTitle: String { title.isEmpty ? "(No title)" : title }
 
     /// All-day events longer than one day, or timed events lasting 24 hours or more.
     /// (An overnight timed event, say 22:00–06:00, doesn't count.)
@@ -199,7 +206,7 @@ struct CalendarEvent: Identifiable, Hashable, Codable {
         }
         eventID = e.id
         calendarID = calendar.id
-        title = e.summary?.isEmpty == false ? e.summary! : "(No title)"
+        title = e.summary ?? ""
         location = e.location ?? ""
         notes = e.description ?? ""
         color = e.colorId.flatMap { EventColors.hex[$0] } ?? calendar.backgroundColor
@@ -330,14 +337,24 @@ struct TaskItem: Identifiable, Hashable, Codable {
 // MARK: - Editable drafts
 
 struct EventDraft: Equatable {
+    /// The editable values, as they were when an existing event was opened.
+    struct Values: Equatable {
+        var title: String
+        var isAllDay: Bool
+        var start: Date
+        var end: Date
+        var location: String
+        var notes: String
+    }
+
     var eventID: String?
     var calendarID: String
     /// Where an existing event lives now; differs from `calendarID` when it's being moved.
     var originalCalendarID: String?
-    /// For an occurrence of a recurring event: the series id, and the occurrence's start
-    /// before editing (to shift the whole series by the same amount).
+    /// For an occurrence of a recurring event: the id of its series.
     var recurringEventID: String?
-    var originalStart: Date?
+    /// An existing event's values before editing, so only what changed is sent to Google.
+    var original: Values?
     /// Video call link of an existing event (not editable here).
     var meetingURL: URL?
     var title = ""
@@ -364,20 +381,26 @@ struct EventDraft: Equatable {
 
     var isRecurring: Bool { recurringEventID != nil }
     var isMoving: Bool { originalCalendarID.map { $0 != calendarID } ?? false }
+    var values: Values { Values(title: title, isAllDay: isAllDay, start: start, end: end, location: location, notes: notes) }
+    /// Whether the date, time, length or all-day setting changed (always true for a new event).
+    var timesChanged: Bool {
+        guard let original else { return true }
+        return original.isAllDay != isAllDay || original.start != start || original.end != end
+    }
 
     init(_ e: CalendarEvent) {
         eventID = e.eventID
         calendarID = e.calendarID
         originalCalendarID = e.calendarID
         recurringEventID = e.recurringEventID
-        originalStart = e.start
         meetingURL = e.meetingURL
-        title = e.title == "(No title)" ? "" : e.title
+        title = e.title
         isAllDay = e.isAllDay
         start = e.start
         end = e.isAllDay ? max(e.start, e.end.adding(days: -1)) : e.end
         location = e.location
         notes = e.notes
+        original = values
     }
 }
 
@@ -431,26 +454,40 @@ enum EditScope: String, CaseIterable, Identifiable {
     }
 }
 
-/// Applying an edit of one occurrence to its whole recurring series.
+/// Applying an edit of one occurrence to its whole recurring series. Only the time of day and
+/// the length can change: moving the series' first event to another day would leave its repeat
+/// rule (for example "every Monday") pointing at the old weekday.
 enum SeriesShift {
-    /// New start of the series: moved by as many days as the occurrence was moved, at the
-    /// occurrence's new time of day (midnight for all-day events).
-    static func start(seriesStart: Date, occurrenceStart: Date, editedStart: Date, allDay: Bool) -> Date {
-        let cal = Calendar.current
-        let dayShift = cal.dateComponents([.day], from: occurrenceStart.startOfDay, to: editedStart.startOfDay).day ?? 0
-        let day = seriesStart.startOfDay.adding(days: dayShift)
-        if allDay { return day }
-        let time = cal.dateComponents([.hour, .minute, .second], from: editedStart)
-        return cal.date(bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: time.second ?? 0, of: day) ?? day
+    enum Refusal: LocalizedError {
+        case otherDay, allDayChange
+
+        var errorDescription: String? {
+            switch self {
+            case .otherDay:
+                "A whole repeating series can't be moved to other days from machen, because its repeat rule would keep the old day. Change only the time, choose This event, or edit the series in Google Calendar."
+            case .allDayChange:
+                "A whole repeating series can't be switched between all-day and timed from machen. Choose This event, or edit the series in Google Calendar."
+            }
+        }
     }
 
-    /// New end of the series' first event, keeping the edited duration. For all-day events the
-    /// result is the last day (inclusive), like `EventDraft.end`.
-    static func end(newStart: Date, editedStart: Date, editedEnd: Date, allDay: Bool) -> Date {
-        if allDay {
-            let days = Calendar.current.dateComponents([.day], from: editedStart.startOfDay, to: editedEnd.startOfDay).day ?? 0
-            return newStart.adding(days: max(days, 0))
-        }
-        return newStart.addingTimeInterval(max(editedEnd.timeIntervalSince(editedStart), 0))
+    /// Checks that an edit of an occurrence can be applied to its whole series.
+    static func check(original: EventDraft.Values, edited: EventDraft.Values) throws {
+        if original.isAllDay != edited.isAllDay { throw Refusal.allDayChange }
+        if !Calendar.current.isDate(original.start, inSameDayAs: edited.start) { throw Refusal.otherDay }
+    }
+
+    /// New start and end of a timed series: its first event moves by as much as the occurrence
+    /// did, and takes the occurrence's new length. Working with the time difference (rather than
+    /// a local time of day) keeps the series in its own time zone.
+    static func timed(seriesStart: Date, occurrenceStart: Date, editedStart: Date, editedEnd: Date) -> (start: Date, end: Date) {
+        let start = seriesStart.addingTimeInterval(editedStart.timeIntervalSince(occurrenceStart))
+        return (start, start.addingTimeInterval(max(editedEnd.timeIntervalSince(editedStart), 0)))
+    }
+
+    /// New first and last day (inclusive) of an all-day series: same start day, new length in days.
+    static func allDay(seriesStart: Date, editedStart: Date, editedEnd: Date) -> (start: Date, end: Date) {
+        let days = Calendar.current.dateComponents([.day], from: editedStart.startOfDay, to: editedEnd.startOfDay).day ?? 0
+        return (seriesStart.startOfDay, seriesStart.startOfDay.adding(days: max(days, 0)))
     }
 }

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>machen – Google Calendar and Google Tasks in the Mac menu bar</title>
+  <meta name="description" content="machen is a free Mac menu bar app that shows your Google Calendar events and Google Tasks in one list, and lets you add and change them.">
+  <link rel="icon" href="icon.png">
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="site">
+      <a class="brand" href="./"><img src="icon.png" alt="">machen</a>
+      <nav>
+        <a href="#your-google-data">Your data</a>
+        <a href="privacy.html">Privacy policy</a>
+        <a href="https://github.com/bernorieder/machen">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="hero">
+        <img class="icon" src="icon.png" alt="machen app icon: a red raised fist on a white tile">
+        <h1>Your Google Calendar and Google Tasks in the Mac menu bar</h1>
+        <p class="lead">machen is a small, free app for the Mac menu bar. It shows your upcoming events and open tasks from one or more Google accounts in one list, and lets you add and change them without opening a browser.</p>
+        <a class="button" href="https://github.com/bernorieder/machen/releases/latest">Download machen</a>
+        <p class="small">Free and open source · macOS 14 or later · Mac with Apple silicon</p>
+      </div>
+
+      <div class="shots">
+        <picture>
+          <source srcset="screenshots/agenda-dark.png" media="(prefers-color-scheme: dark)">
+          <img src="screenshots/agenda-light.png" width="408" height="588" alt="machen's list: today's events, then open tasks grouped by list, with subtasks indented">
+        </picture>
+        <picture>
+          <source srcset="screenshots/settings-sources-dark.png" media="(prefers-color-scheme: dark)">
+          <img src="screenshots/settings-sources.png" width="408" height="588" alt="machen's settings: two Google accounts, then calendars and task lists with switches and colours">
+        </picture>
+      </div>
+
+      <section>
+        <h2>What it does</h2>
+        <ul>
+          <li><strong>Events:</strong> shows the events of your Google calendars for today, or for up to two weeks ahead.</li>
+          <li><strong>Tasks:</strong> shows your open tasks from Google Tasks, grouped by list and sorted by due date, with subtasks under their task.</li>
+          <li><strong>Editing:</strong> add, change and delete events and tasks, move events to another calendar, and mark tasks as done, with a few seconds to undo.</li>
+          <li><strong>Several accounts:</strong> connect more than one Google account, for example a personal and a work account.</li>
+          <li><strong>Video calls:</strong> events with a Google Meet, Zoom, Teams or similar link get a Join button.</li>
+          <li><strong>Notifications:</strong> the reminders you've set in Google Calendar appear as Mac notifications.</li>
+          <li><strong>Offline:</strong> shows the events and tasks it last loaded when you're offline.</li>
+        </ul>
+        <p>machen works only with Google Calendar and Google Tasks. It doesn't show a calendar grid, and it can't invite people to events. The <a href="https://github.com/bernorieder/machen#readme">README on GitHub</a> lists everything it does and doesn't do.</p>
+      </section>
+
+      <section id="your-google-data">
+        <h2>How machen uses your Google data</h2>
+        <p>When you connect a Google account, machen asks Google for three permissions. It uses them only to show your calendars, events and tasks in the app, to make the changes you make in the app, and to show your event reminders as notifications on your Mac.</p>
+        <div class="panel">
+          <table>
+            <thead><tr><th>Permission</th><th>What machen does with it</th></tr></thead>
+            <tbody>
+              <tr><td>See the list of Google calendars you're subscribed to</td><td>Shows your calendars with their names and colours, uses their default reminders, and identifies the account by its address.</td></tr>
+              <tr><td>View and edit events on all your calendars</td><td>Shows your events, and adds, changes, moves and deletes events when you do so in machen.</td></tr>
+              <tr><td>Create, edit, organize, and delete all your tasks</td><td>Shows your open tasks, and adds, changes, completes and deletes tasks when you do so in machen.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul>
+          <li><strong>No server in between.</strong> machen talks directly to Google from your Mac. Your data isn't sent to the developer or to anyone else.</li>
+          <li><strong>Stored only on your Mac.</strong> Your sign-in is kept in the macOS Keychain, and a copy of the last loaded events and tasks is kept so machen can show them offline.</li>
+          <li><strong>Nothing else.</strong> No analytics, no ads, no tracking. Your data isn't sold, shared, or used to train AI models.</li>
+          <li><strong>Your choice.</strong> Removing an account in machen's settings revokes its access and deletes its data from your Mac. You can also revoke access at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>
+        </ul>
+        <p>The <a href="privacy.html">privacy policy</a> has the details.</p>
+      </section>
+
+      <section>
+        <h2>Installation</h2>
+        <ol>
+          <li>Download <code>machen-&lt;version&gt;.dmg</code> from the <a href="https://github.com/bernorieder/machen/releases/latest">latest release</a>.</li>
+          <li>Open it and drag machen into your Applications folder.</li>
+          <li>Open machen. Its icon appears in the menu bar.</li>
+          <li>Click the icon, then <strong>Sign in with Google</strong>, and allow access in your browser.</li>
+        </ol>
+        <p>To add another account, open <strong>Settings → Sources</strong> and click <strong>Add Google Account</strong>.</p>
+      </section>
+    </main>
+
+    <footer class="site">
+      <p>machen is made by Bernhard Rieder as part of <a href="https://polsys.net">polsys.net</a>. Its source code is on <a href="https://github.com/bernorieder/machen">GitHub</a>. Contact: <a href="mailto:berno.rieder@gmail.com">berno.rieder@gmail.com</a></p>
+      <p><a href="privacy.html">Privacy policy</a></p>
+      <p>machen isn't affiliated with Google. Google Calendar and Google Tasks are trademarks of Google LLC. The fist in the icon is <a href="https://fontawesome.com/icons/hand-fist?s=solid">hand-fist</a> from Font Awesome Free (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>).</p>
+    </footer>
+  </div>
+</body>
+</html>

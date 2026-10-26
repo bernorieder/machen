@@ -159,4 +159,6 @@ MainActor.assumeIsolated {
     for panel in SettingsPanel.allCases {
         screenshot(SettingsView(panel: panel, onClose: {}), store: store, dark: false, name: "settings-\(panel.rawValue).png")
     }
+    // For the website in dark mode
+    screenshot(SettingsView(panel: .sources, onClose: {}), store: store, dark: true, name: "settings-sources-dark.png")
 }

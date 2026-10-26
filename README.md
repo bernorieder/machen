@@ -6,6 +6,8 @@
 
 machen is a small app for the Mac menu bar. It shows your Google Calendar events and your Google Tasks in one list, from one or more Google accounts, and lets you add and change them without opening a browser.
 
+Website: [machen.polsys.net](https://machen.polsys.net)
+
 <p align="center">
   <img src="docs/screenshots/agenda-light.png" width="300" alt="machen in light mode: today's events, then open tasks grouped by list, with subtasks indented">
   <img src="docs/screenshots/agenda-dark.png" width="300" alt="machen in dark mode">
@@ -69,6 +71,8 @@ To start machen whenever you log in, turn on **Settings → General → Launch a
 - **Access to your data.** machen asks Google for permission to see your list of calendars, to see and change your events, and to see and change your tasks, because that's what it shows and edits. It can't share or delete calendars, or change who has access to them.
 - **On your Mac.** Your sign-ins are stored in the macOS Keychain. A copy of the events and tasks it last loaded is kept on your Mac so it can show them offline. Removing an account in **Settings → Sources** removes its sign-in and its events and tasks.
 - **Revoking access.** You can remove machen's access to your Google account at any time at [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+
+The full [privacy policy](https://machen.polsys.net/privacy.html) has the details.
 
 ## Uninstalling
 

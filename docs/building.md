@@ -28,7 +28,17 @@ Google doesn't treat a desktop client secret as confidential, since it ships ins
 
 - **Testing:** only the test users you listed can sign in, and Google ends their sign-in after 7 days. Each Google account connected to machen must be on the list, including second accounts.
 - **In production, unverified:** go to **Audience → Publish app**. Anyone can sign in, up to 100 users, and they see an "unverified app" warning once (**Advanced → Go to machen**).
-- **Verified:** to remove the warning and the user limit, apply for verification on the same page. Google asks for a home page, a privacy policy, and a short video showing the sign-in. The Calendar and Tasks permissions are "sensitive", which needs this review but not the paid security assessment.
+- **Verified:** to remove the warning and the user limit, apply for verification on the same page. Google asks for a home page, a privacy policy, and a short video showing the sign-in. The events and tasks permissions are "sensitive", which needs this review but not the paid security assessment; the calendar list permission isn't sensitive.
+
+### Website
+
+machen's home page and privacy policy, which verification needs, are `docs/index.html` and `docs/privacy.html`, with `docs/site.css`. GitHub Pages serves the `docs/` folder of `main` at <https://machen.polsys.net>:
+
+- **GitHub:** under the repository's **Settings → Pages**, the source is **Deploy from a branch**, `main`, `/docs`. `docs/CNAME` holds the domain, and `docs/.nojekyll` makes Pages serve the files as they are.
+- **DNS:** `machen.polsys.net` is a CNAME record pointing to `bernorieder.github.io`.
+- **Google:** `polsys.net` is verified in Google Search Console by an owner of the Google Cloud project, and listed under **Google Auth Platform → Branding → Authorized domains**, with the home page and privacy policy addresses.
+
+Google requires the privacy policy to match what the app does. Update it, and its date, whenever machen starts handling data differently.
 
 machen asks only for what it uses:
 

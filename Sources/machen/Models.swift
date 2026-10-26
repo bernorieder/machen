@@ -7,7 +7,13 @@ struct CalendarListResponse: Decodable {
     let nextPageToken: String?
 }
 
-struct CalendarInfo: Decodable, Identifiable, Hashable {
+/// A Google Calendar reminder: "popup" ones become desktop notifications, "email" ones are Google's.
+struct ReminderSetting: Codable, Hashable {
+    let method: String?
+    let minutes: Int?
+}
+
+struct CalendarInfo: Codable, Identifiable, Hashable {
     let id: String
     let summary: String?
     let summaryOverride: String?
@@ -15,6 +21,8 @@ struct CalendarInfo: Decodable, Identifiable, Hashable {
     let accessRole: String
     let selected: Bool?
     let primary: Bool?
+    /// Reminders for events that use the calendar's defaults.
+    var defaultReminders: [ReminderSetting]? = nil
 
     var name: String { summaryOverride ?? summary ?? id }
     var canEdit: Bool { accessRole == "owner" || accessRole == "writer" }
@@ -41,6 +49,19 @@ struct GEvent: Decodable {
         }
     }
 
+    struct Reminders: Decodable {
+        let useDefault: Bool?
+        let overrides: [ReminderSetting]?
+    }
+
+    struct ConferenceData: Decodable {
+        struct EntryPoint: Decodable {
+            let entryPointType: String?
+            let uri: String?
+        }
+        let entryPoints: [EntryPoint]?
+    }
+
     let id: String
     let status: String?
     let summary: String?
@@ -52,6 +73,38 @@ struct GEvent: Decodable {
     let attendees: [Attendee]?
     /// Set when the event has its own color instead of its calendar's.
     let colorId: String?
+    /// Set on each occurrence of a recurring event: the id of the series.
+    let recurringEventId: String?
+    let hangoutLink: String?
+    let conferenceData: ConferenceData?
+    let reminders: Reminders?
+}
+
+/// Finds the video call link of an event.
+enum MeetingLink {
+    /// Hosts of video call services whose links count as meeting links in a location or description.
+    static let hosts = ["meet.google.com", "zoom.us", "zoom.com", "teams.microsoft.com", "teams.live.com",
+                        "webex.com", "whereby.com", "gotomeeting.com", "meet.jit.si", "facetime.apple.com"]
+
+    /// The conference link Google attached (Meet, or an add-on like Zoom), else the first
+    /// meeting link in the event's location or description.
+    static func find(in e: GEvent) -> URL? {
+        if let uri = e.conferenceData?.entryPoints?.first(where: { $0.entryPointType == "video" })?.uri,
+           let url = URL(string: uri) {
+            return url
+        }
+        if let link = e.hangoutLink, let url = URL(string: link) { return url }
+        return [e.location, e.description].compactMap { $0 }.lazy.compactMap(firstLink).first
+    }
+
+    static func firstLink(in text: String) -> URL? {
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return nil }
+        let matches = detector.matches(in: text, range: NSRange(text.startIndex..., in: text))
+        return matches.lazy.compactMap(\.url).first { url in
+            guard let host = url.host?.lowercased(), url.scheme == "https" || url.scheme == "http" else { return false }
+            return hosts.contains { host == $0 || host.hasSuffix("." + $0) }
+        }
+    }
 }
 
 /// Google Calendar's event colors by `colorId`, as the web and mobile apps show them.
@@ -79,7 +132,7 @@ struct TaskListsResponse: Decodable {
     let nextPageToken: String?
 }
 
-struct TaskListInfo: Decodable, Identifiable, Hashable {
+struct TaskListInfo: Codable, Identifiable, Hashable {
     let id: String
     let title: String
 }
@@ -102,7 +155,7 @@ struct GTask: Decodable {
 
 // MARK: - App models
 
-struct CalendarEvent: Identifiable, Hashable {
+struct CalendarEvent: Identifiable, Hashable, Codable {
     let eventID: String
     let calendarID: String
     let title: String
@@ -116,6 +169,12 @@ struct CalendarEvent: Identifiable, Hashable {
     let canEdit: Bool
     let declined: Bool
     let link: URL?
+    /// Video call link, if any.
+    let meetingURL: URL?
+    /// For an occurrence of a recurring event: the id of the series.
+    let recurringEventID: String?
+    /// Minutes before the start at which to show a notification (the event's popup reminders).
+    let reminderMinutes: [Int]
 
     var id: String { calendarID + "/" + eventID }
 
@@ -147,6 +206,15 @@ struct CalendarEvent: Identifiable, Hashable {
         canEdit = calendar.canEdit
         declined = e.attendees?.first(where: { $0.isSelf == true })?.responseStatus == "declined"
         link = e.htmlLink.flatMap(URL.init(string:))
+        meetingURL = MeetingLink.find(in: e)
+        recurringEventID = e.recurringEventId
+        reminderMinutes = Self.popupMinutes(e, calendar: calendar)
+    }
+
+    /// The event's own popup reminders, or its calendar's defaults when it uses those.
+    static func popupMinutes(_ e: GEvent, calendar: CalendarInfo) -> [Int] {
+        let settings = (e.reminders?.useDefault ?? true) ? (calendar.defaultReminders ?? []) : (e.reminders?.overrides ?? [])
+        return Array(Set(settings.filter { $0.method == "popup" }.compactMap(\.minutes))).sorted()
     }
 
     /// All-day events first, then by start time. Ties follow the calendar order from Settings
@@ -187,7 +255,7 @@ enum CustomOrder {
     }
 }
 
-struct TaskItem: Identifiable, Hashable {
+struct TaskItem: Identifiable, Hashable, Codable {
     let taskID: String
     let listID: String
     let title: String
@@ -264,6 +332,14 @@ struct TaskItem: Identifiable, Hashable {
 struct EventDraft: Equatable {
     var eventID: String?
     var calendarID: String
+    /// Where an existing event lives now; differs from `calendarID` when it's being moved.
+    var originalCalendarID: String?
+    /// For an occurrence of a recurring event: the series id, and the occurrence's start
+    /// before editing (to shift the whole series by the same amount).
+    var recurringEventID: String?
+    var originalStart: Date?
+    /// Video call link of an existing event (not editable here).
+    var meetingURL: URL?
     var title = ""
     var isAllDay = false
     var start: Date
@@ -286,9 +362,16 @@ struct EventDraft: Equatable {
         end = start.addingTimeInterval(3600)
     }
 
+    var isRecurring: Bool { recurringEventID != nil }
+    var isMoving: Bool { originalCalendarID.map { $0 != calendarID } ?? false }
+
     init(_ e: CalendarEvent) {
         eventID = e.eventID
         calendarID = e.calendarID
+        originalCalendarID = e.calendarID
+        recurringEventID = e.recurringEventID
+        originalStart = e.start
+        meetingURL = e.meetingURL
         title = e.title == "(No title)" ? "" : e.title
         isAllDay = e.isAllDay
         start = e.start
@@ -332,5 +415,42 @@ struct TaskDraft: Equatable {
         notes = t.notes
         hasDue = t.due != nil
         due = t.due ?? Date().startOfDay
+    }
+}
+
+/// Which events an edit to an occurrence of a recurring event applies to.
+enum EditScope: String, CaseIterable, Identifiable {
+    case thisEvent, allEvents
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .thisEvent: "This event"
+        case .allEvents: "All events"
+        }
+    }
+}
+
+/// Applying an edit of one occurrence to its whole recurring series.
+enum SeriesShift {
+    /// New start of the series: moved by as many days as the occurrence was moved, at the
+    /// occurrence's new time of day (midnight for all-day events).
+    static func start(seriesStart: Date, occurrenceStart: Date, editedStart: Date, allDay: Bool) -> Date {
+        let cal = Calendar.current
+        let dayShift = cal.dateComponents([.day], from: occurrenceStart.startOfDay, to: editedStart.startOfDay).day ?? 0
+        let day = seriesStart.startOfDay.adding(days: dayShift)
+        if allDay { return day }
+        let time = cal.dateComponents([.hour, .minute, .second], from: editedStart)
+        return cal.date(bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: time.second ?? 0, of: day) ?? day
+    }
+
+    /// New end of the series' first event, keeping the edited duration. For all-day events the
+    /// result is the last day (inclusive), like `EventDraft.end`.
+    static func end(newStart: Date, editedStart: Date, editedEnd: Date, allDay: Bool) -> Date {
+        if allDay {
+            let days = Calendar.current.dateComponents([.day], from: editedStart.startOfDay, to: editedEnd.startOfDay).day ?? 0
+            return newStart.adding(days: max(days, 0))
+        }
+        return newStart.addingTimeInterval(max(editedEnd.timeIntervalSince(editedStart), 0))
     }
 }

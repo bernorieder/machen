@@ -56,9 +56,9 @@ struct RootView: View {
         .frame(width: Layout.Popover.width, height: Layout.Popover.height)
         .environment(\.rowDensity, store.density)
         .environment(\.textSizes, store.textSizes)
-        .task { await store.refreshIfStale() }
+        .task { await store.refreshOnOpen() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
-            Task { await store.refreshIfStale() }
+            Task { await store.refreshOnOpen() }
         }
         .onChange(of: auth.isSignedIn) { _, signedIn in
             route = .agenda

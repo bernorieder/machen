@@ -49,12 +49,18 @@ struct EventEditor: View {
     @ViewState private var draft: EventDraft
     @ViewState private var saving = false
     @ViewState private var error: String?
+    /// For an occurrence of a recurring event: change just it, or the whole series.
+    @ViewState private var scope = EditScope.thisEvent
     let onClose: () -> Void
 
     init(draft: EventDraft, onClose: @escaping () -> Void) {
         _draft = ViewState(wrappedValue: draft)
         self.onClose = onClose
     }
+
+    private var editsSeries: Bool { draft.isRecurring && scope == .allEvents }
+    /// Google moves only whole series to another calendar, not single occurrences.
+    private var canChangeCalendar: Bool { draft.isNew || !draft.isRecurring || editsSeries }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -63,6 +69,20 @@ struct EventEditor: View {
                          saving: saving, onCancel: onClose, onSave: save)
             Divider()
             Form {
+                if draft.isRecurring && !draft.isNew {
+                    Section {
+                        Picker("Apply changes to", selection: $scope) {
+                            ForEach(EditScope.allCases) { Text($0.label).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                    } footer: {
+                        Text(editsSeries
+                             ? "Changes the whole series. A new time or date shifts every event by the same amount."
+                             : "This is a repeating event. Changes apply only to this one.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Section {
                     TextField("Title", text: $draft.title, prompt: Text("Event title"))
                     Picker("Calendar", selection: $draft.calendarID) {
@@ -70,7 +90,14 @@ struct EventEditor: View {
                             Text(cal.name).tag(cal.id)
                         }
                     }
-                    .disabled(!draft.isNew)
+                    .disabled(!canChangeCalendar)
+                    .help(canChangeCalendar ? "" : "To move a repeating event, choose All events: Google moves whole series only.")
+                    if let url = draft.meetingURL {
+                        LabeledContent("Video call") {
+                            Button("Join") { NSWorkspace.shared.open(url) }
+                                .help(url.absoluteString)
+                        }
+                    }
                 }
                 Section {
                     Toggle("All day", isOn: $draft.isAllDay)
@@ -91,11 +118,17 @@ struct EventEditor: View {
                 }
                 if !draft.isNew {
                     Section {
-                        DeleteRow(label: "Delete Event", onDelete: delete)
+                        DeleteRow(label: editsSeries ? "Delete All Events" : "Delete Event", onDelete: delete)
                     }
                 }
             }
             .formStyle(.grouped)
+        }
+        .onChange(of: scope) { _, newScope in
+            // A single occurrence can't change calendar, so undo a pending move
+            if newScope == .thisEvent, let original = draft.originalCalendarID {
+                draft.calendarID = original
+            }
         }
         .onChange(of: draft.isAllDay) { _, allDay in
             guard !allDay else { return }
@@ -129,7 +162,7 @@ struct EventEditor: View {
         error = nil
         Task {
             do {
-                try await store.save(draft)
+                try await store.save(draft, scope: editsSeries ? .allEvents : .thisEvent)
                 onClose()
             } catch {
                 self.error = error.localizedDescription
@@ -142,7 +175,7 @@ struct EventEditor: View {
         saving = true
         Task {
             do {
-                try await store.deleteEvent(draft)
+                try await store.deleteEvent(draft, scope: editsSeries ? .allEvents : .thisEvent)
                 onClose()
             } catch {
                 self.error = error.localizedDescription

@@ -65,6 +65,13 @@ struct AgendaView: View {
                 }
                 .padding(Layout.List.inset)
             }
+            .safeAreaInset(edge: .bottom) {
+                if let completed = store.recentlyCompleted {
+                    UndoBanner(completed: completed) { Task { await store.undoComplete() } }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: store.recentlyCompleted)
             Divider()
             footer
         }
@@ -128,32 +135,41 @@ struct EventRow: View {
     @Environment(\.textSizes) private var sizes
 
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: density.lineGap) {
-                Text(event.title)
-                    .font(sizes.name.font(Layout.Text.itemName))
-                    .strikethrough(event.declined)
-                    .lineLimit(2)
-                Text(timeText)
-                    .font(sizes.detail.font(Layout.Text.detail))
-                    .foregroundStyle(.secondary)
-                if !event.location.isEmpty {
-                    Text(event.location)
+        HStack(alignment: .center, spacing: 6) {
+            Button(action: action) {
+                VStack(alignment: .leading, spacing: density.lineGap) {
+                    Text(event.title)
+                        .font(sizes.name.font(Layout.Text.itemName))
+                        .strikethrough(event.declined)
+                        .lineLimit(2)
+                    Text(timeText)
                         .font(sizes.detail.font(Layout.Text.detail))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if !event.location.isEmpty {
+                        Text(event.location)
+                            .font(sizes.detail.font(Layout.Text.detail))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .padding(.leading, Layout.Bar.textInset)
-            .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: Layout.Bar.cornerRadius)
-                    .fill(Color(hex: event.color) ?? .accentColor)
-                    .frame(width: Layout.Bar.width)
+            .buttonStyle(.plain)
+            .help(event.canEdit ? "Edit event" : "Read-only calendar – opens in Google Calendar")
+
+            if let url = event.meetingURL, event.end > Date() {
+                JoinButton(url: url, start: event.start, end: event.end)
             }
         }
-        .buttonStyle(RowButtonStyle())
+        .padding(.leading, Layout.Bar.textInset)
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: Layout.Bar.cornerRadius)
+                .fill(Color(hex: event.color) ?? .accentColor)
+                .frame(width: Layout.Bar.width)
+        }
+        .modifier(RowChrome())
         .opacity(event.end < Date() || event.declined ? Layout.Row.pastEventOpacity : 1)
-        .help(event.canEdit ? "Edit event" : "Read-only calendar – opens in Google Calendar")
     }
 
     private var timeText: String {
@@ -169,6 +185,39 @@ struct EventRow: View {
         let end = event.end.formatted(date: Calendar.current.isDate(event.start, inSameDayAs: event.end) ? .omitted : .abbreviated,
                                       time: .shortened)
         return "\(start) – \(end)"
+    }
+}
+
+/// Opens an event's video call. Prominent from 10 minutes before the start until the end.
+struct JoinButton: View {
+    let url: URL
+    let start: Date
+    let end: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            let live = context.date >= start.addingTimeInterval(-10 * 60) && context.date < end
+            Button("Join") { NSWorkspace.shared.open(url) }
+                .buttonStyle(JoinButtonStyle(live: live))
+                .help("Join the video call (\(url.host ?? url.absoluteString))")
+        }
+    }
+}
+
+/// A small capsule: accent-coloured while the call is on, subtle otherwise. Drawn by hand so it
+/// looks the same whether or not the popover is the active window.
+struct JoinButtonStyle: ButtonStyle {
+    let live: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(live ? Color.white : Color.primary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(live ? Color.accentColor : Color.primary.opacity(0.08)))
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .contentShape(Capsule())
     }
 }
 
@@ -326,6 +375,48 @@ struct EmptyRow: View {
     }
 }
 
+/// "Completed … · Undo", shown for a few seconds after completing a task.
+struct UndoBanner: View {
+    let completed: CompletedTasks
+    let onUndo: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            // Only the title gets shortened; "and 2 subtasks" always stays visible
+            HStack(spacing: 0) {
+                Text(title).lineLimit(1).truncationMode(.tail)
+                if let subtasks { Text(subtasks).lineLimit(1).fixedSize() }
+            }
+            Spacer(minLength: 4)
+            Button("Undo", action: onUndo)
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+                .fontWeight(.semibold)
+                .keyboardShortcut("z", modifiers: .command)
+        }
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.1)))
+        .padding(.horizontal, Layout.List.inset)
+        .padding(.bottom, Layout.List.inset)
+    }
+
+    private var title: String {
+        completed.title.isEmpty ? "Completed task" : "Completed “\(completed.title)”"
+    }
+
+    private var subtasks: String? {
+        switch completed.taskIDs.count - 1 {
+        case 0: nil
+        case 1: " and 1 subtask"
+        case let n: " and \(n) subtasks"
+        }
+    }
+}
+
 struct ErrorBanner: View {
     let message: String
     let onDismiss: () -> Void
@@ -410,12 +501,6 @@ struct DisclosureLabel: View {
             Image(systemName: collapsed ? "chevron.right" : "chevron.down")
                 .font(.system(size: size.points(base * Layout.Disclosure.arrowShare), weight: .bold))
         }
-    }
-}
-
-struct RowButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label.modifier(RowChrome(pressed: configuration.isPressed))
     }
 }
 

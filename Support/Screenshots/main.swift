@@ -24,11 +24,13 @@ func calendar(_ id: String, _ name: String, _ color: String, primary: Bool = fal
                  accessRole: "owner", selected: true, primary: primary)
 }
 
-func event(_ title: String, _ cal: CalendarInfo, start: Date, hours: Double = 1, location: String? = nil) -> CalendarEvent {
+func event(_ title: String, _ cal: CalendarInfo, start: Date, hours: Double = 1, location: String? = nil,
+           meeting: String? = nil) -> CalendarEvent {
     var json: [String: Any] = ["id": title, "summary": title,
                                "start": ["dateTime": GDate.dateTimeString(start)],
                                "end": ["dateTime": GDate.dateTimeString(start.addingTimeInterval(hours * 3600))]]
     if let location { json["location"] = location }
+    if let meeting { json["hangoutLink"] = meeting }
     return CalendarEvent(try! JSONDecoder().decode(GEvent.self, from: JSONSerialization.data(withJSONObject: json)), calendar: cal)!
 }
 
@@ -54,6 +56,7 @@ let holidays = calendar("holidays", "Holidays", "#8E24AA")
 
 let events = [
     event("Team stand-up", work, start: hour.addingTimeInterval(-2 * 3600), hours: 0.25),
+    event("Project call", work, start: Date().addingTimeInterval(5 * 60), hours: 0.5, meeting: "https://meet.google.com/abc-defg-hij"),
     event("Lunch with Sam", personal, start: hour.addingTimeInterval(1.5 * 3600), location: "Café Central"),
     event("Seminar: platform studies", work, start: hour.addingTimeInterval(4 * 3600), hours: 2, location: "Room 4.12"),
     allDay("Conference in Lisbon", work, from: 1, days: 3),

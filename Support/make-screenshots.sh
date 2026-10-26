@@ -23,3 +23,4 @@ mkdir -p docs/screenshots
 
 # The tool's own settings are throwaway
 defaults delete io.github.bernorieder.machen.screenshots 2>/dev/null || true
+rm -f ~/Library/Preferences/io.github.bernorieder.machen.screenshots.plist

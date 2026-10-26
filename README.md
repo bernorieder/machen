@@ -17,7 +17,9 @@ Click the icon in the menu bar to see:
 - **Events** from every calendar you have visible in Google Calendar, for today or for the next several days (see Settings). Events use their own colour if you gave them one in Google Calendar, and their calendar's colour otherwise.
 - **Open tasks**, grouped by task list. Each list has a colour bar, like calendar events do. Within a list, tasks are sorted by due date: overdue ones first (in red), undated ones last. Subtasks appear indented and in smaller type below their parent, in the order you gave them in Google Tasks.
 
-You can add events and tasks with the **+** buttons. A list's own **+** adds a task to that list. To add a subtask, open a task and click **Add Subtask**. Click a task list's name to hide or show its tasks; a collapsed list shows how many tasks it holds (`Work 5 ›`). A task with subtasks shows their number at the right (`2 ▾`); click it to hide or show them. What you collapse is remembered. Click an event or task to edit or delete it. Click the circle next to a task to mark it as done. Events from calendars you can't edit open in Google Calendar instead.
+You can add events and tasks with the **+** buttons. A list's own **+** adds a task to that list. To add a subtask, open a task and click **Add Subtask**. Click a task list's name to hide or show its tasks; a collapsed list shows how many tasks it holds (`Work 5 ›`). A task with subtasks shows their number at the right (`2 ▾`); click it to hide or show them. What you collapse is remembered. Click an event or task to edit or delete it. Click the circle next to a task to mark it as done; for a few seconds afterwards, **Undo** (or ⌘Z) reopens it, together with any subtasks completed with it. Events from calendars you can't edit open in Google Calendar instead.
+
+Events with a video call (Google Meet, or a Zoom, Teams, Webex or similar link in the location or description) get a **Join** button, which turns blue from 10 minutes before the start. To move an event to another calendar, pick it in the editor. When you edit or delete a repeating event, choose **This event** or **All events**. With All events, a new time or date shifts the whole series by the same amount.
 
 Requires macOS 14 or later.
 
@@ -88,11 +90,14 @@ This builds and signs the app, packs it into `build/machen-<version>.dmg`, and h
 - **Menu bar icon:** pick one of several icons in Settings → Display, including the fist from the app icon.
 - **Links:** Settings has shortcuts to Google Calendar, Google Tasks, and this project on GitHub.
 - **Choosing what's shown:** **Settings** (gear icon) lets you pick which calendars and task lists to show, and a colour for each task list. (Google Tasks lists have no colours of their own.) By default you see the calendars that are visible in Google Calendar, plus all task lists. Drag calendars and task lists by their handle (☰) to reorder them. Task lists appear in that order in the main screen. Calendar order decides which event comes first when several start at the same time. Reordering doesn't change a list's colour.
-- **Sync:** the app loads everything when it starts. After that it refreshes when you open it (at most once a minute), every 5 minutes, and after every edit.
+- **Offline:** machen keeps the last loaded calendars, events and tasks in `~/Library/Application Support/io.github.bernorieder.machen/cache.json`, readable only by you. It shows them right away at launch, and when you're offline. Signing out deletes the file.
+- **Notifications:** machen shows a notification for each popup reminder you've set in Google Calendar: the event's own, or its calendar's defaults. It covers the calendars shown in machen, and adds a **Join** button for video calls. macOS asks for permission the first time. Turn them off in **Settings → General → Event notifications** if Google already notifies you elsewhere. Reminders more than a day ahead of an event aren't covered.
+- **Sync:** machen loads everything at launch, refreshes in the background whenever you open it (unless it just did), checks events every minute and everything else every 5 minutes, and refreshes after every edit. Each events check costs one request per shown calendar, so keep this in mind if many people share your Google project: its default quota is 1 million Calendar requests a day.
 - **Limitations:**
   - Google Tasks only stores a due *date*, not a time.
-  - After you create an event or task, you can't move it to a different calendar or list.
-  - Editing a recurring event changes only that one occurrence.
+  - Tasks can't be moved to another list after you create them.
+  - A single occurrence of a repeating event can't be moved to another calendar; Google only moves whole series.
+  - Repeating events offer *This event* and *All events*, not *This and following events*.
   - Subtasks can only be one level deep, which is a Google Tasks limit.
   - Completing a task also completes its open subtasks, like the Google Tasks apps do.
 

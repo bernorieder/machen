@@ -202,6 +202,20 @@ struct SettingsView: View {
                     if let launchError {
                         Text(launchError).font(.caption).foregroundStyle(.red)
                     }
+                    Toggle("Event notifications", isOn: $store.notificationsEnabled)
+                        .help("Shows the popup reminders you set in Google Calendar, for the calendars shown here")
+                    if store.notificationsEnabled && store.notificationsBlocked {
+                        HStack {
+                            Text("Notifications are turned off for machen in System Settings.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Open") {
+                                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=io.github.bernorieder.machen")!)
+                            }
+                            .controlSize(.small)
+                        }
+                    }
                 }
                 Section("Links") {
                     Link("Google Calendar", destination: URL(string: "https://calendar.google.com")!)

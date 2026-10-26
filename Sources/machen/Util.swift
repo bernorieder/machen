@@ -172,9 +172,13 @@ enum TaskFilter: String, CaseIterable, Identifiable {
     }
 }
 
-/// SF Symbols offered for the menu bar icon.
+/// Icons offered for the menu bar: SF Symbols, plus the bundled Font Awesome fist.
 enum MenuBarIcon {
+    /// Choice id for Font Awesome Free's hand-fist (CC BY 4.0), bundled as hand-fist.svg.
+    static let fist = "fist"
+
     static let choices: [(name: String, symbol: String)] = [
+        ("Fist", fist),
         ("Calendar", "calendar"),
         ("Calendar with clock", "calendar.badge.clock"),
         ("Checklist", "checklist"),
@@ -184,6 +188,29 @@ enum MenuBarIcon {
         ("Sun", "sun.max"),
         ("Bolt", "bolt"),
     ]
+
+    /// The fist as a template image sized for the menu bar, or nil when the SVG isn't bundled
+    /// (for example when running the bare executable from `swift run`).
+    private static let fistImage: NSImage? = {
+        guard let url = Bundle.main.url(forResource: "hand-fist", withExtension: "svg"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        image.size = NSSize(width: 14, height: 16)
+        image.isTemplate = true
+        return image
+    }()
+
+    @ViewBuilder
+    static func image(_ id: String) -> some View {
+        if id == fist {
+            if let fistImage {
+                Image(nsImage: fistImage)
+            } else {
+                Image(systemName: "hand.raised.fill")
+            }
+        } else {
+            Image(systemName: id)
+        }
+    }
 }
 
 /// How multi-day events appear in the agenda, chosen in Settings.

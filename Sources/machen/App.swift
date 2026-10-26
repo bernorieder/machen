@@ -17,7 +17,7 @@ struct MachenApp: App {
                 .environmentObject(auth)
                 .environmentObject(store)
         } label: {
-            Image(systemName: store.menuBarIcon)
+            MenuBarIcon.image(store.menuBarIcon)
         }
         .menuBarExtraStyle(.window)
     }

@@ -44,6 +44,8 @@ Every app that uses Google's APIs needs its own OAuth client. It's free and take
 open build/machen.app
 ```
 
+The app icon is drawn in code by `Support/make-icon.swift`. After changing it, run `swift Support/make-icon.swift` to regenerate `Support/AppIcon.icns`.
+
 `build.sh` signs the app with the first **Developer ID Application** certificate in your keychain, or ad-hoc if you have none. Set `SIGN_IDENTITY` to choose a different one.
 
 ### 3. Make a notarized release
@@ -68,7 +70,7 @@ This builds and signs the app, packs it into `build/machen-<version>.dmg`, and h
 - **Keychain prompt:** if macOS asks whether machen can use its Keychain item, click **Always Allow**. With a Developer ID signature this happens only once. Ad-hoc builds ask again after every rebuild.
 - **Display:** clicking the **Events** heading switches between Today, 2 days, 3 days and Week. In **Settings → Display** you can choose any number of days of events to show (1 to 14) and the row spacing (Compact, Standard or Roomy). When more than one day is shown, events are grouped under day headings. The **Multi-day events** menu sets how events lasting more than a day are handled: show them on every day they cover, show each one once, or exclude them. With **Show on today and start day**, an event running today appears once under Today. An event that starts later in the shown days appears once, on its start day, marked "Starts". (A multi-day event is an all-day event longer than one day, or a timed event lasting 24 hours or more. An overnight event such as 22:00–06:00 doesn't count.)
 - **Tasks filter:** choose **All** or **Due date only**, either in Settings → Display or by clicking the **Tasks** heading in the main screen. With **Due date only**, a parent task without a date stays visible if one of its subtasks has a date.
-- **Menu bar icon:** pick one of several icons in Settings → Display.
+- **Menu bar icon:** pick one of several icons in Settings → Display, including the fist from the app icon.
 - **Links:** Settings has shortcuts to Google Calendar, Google Tasks, and this project on GitHub.
 - **Choosing what's shown:** **Settings** (gear icon) lets you pick which calendars and task lists to show, and a colour for each task list. (Google Tasks lists have no colours of their own.) By default you see the calendars that are visible in Google Calendar, plus all task lists.
 - **Sync:** the app loads everything when it starts. After that it refreshes when you open it (at most once a minute), every 5 minutes, and after every edit.
@@ -78,6 +80,10 @@ This builds and signs the app, packs it into `build/machen-<version>.dmg`, and h
   - Editing a recurring event changes only that one occurrence.
   - Subtasks can only be one level deep, which is a Google Tasks limit.
   - Completing a task also completes its open subtasks, like the Google Tasks apps do.
+
+## Credits
+
+The fist in the app icon and the menu bar is [hand-fist](https://fontawesome.com/icons/hand-fist?s=solid) from [Font Awesome Free](https://fontawesome.com) 6.7.2 by Fonticons, Inc., licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) (see `Support/hand-fist.svg`). The app icon tints it red and sets it on a white tile.
 
 ## Code layout
 

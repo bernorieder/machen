@@ -8,7 +8,9 @@ struct SignInView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                Image(systemName: "calendar").font(.title)
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 36, height: 36)
                 Text("machen").font(.title2.bold())
             }
             Text("Connect your Google account to see your upcoming events and open tasks.")
@@ -104,7 +106,8 @@ struct SettingsView: View {
                     }
                     Picker("Menu bar icon", selection: $store.menuBarIcon) {
                         ForEach(MenuBarIcon.choices, id: \.symbol) { choice in
-                            Label(choice.name, systemImage: choice.symbol).tag(choice.symbol)
+                            Label { Text(choice.name) } icon: { MenuBarIcon.image(choice.symbol) }
+                                .tag(choice.symbol)
                         }
                     }
                     Picker("Spacing", selection: $store.density) {
@@ -156,6 +159,10 @@ struct SettingsView: View {
                     Link("Google Calendar", destination: URL(string: "https://calendar.google.com")!)
                     Link("Google Tasks", destination: URL(string: "https://tasks.google.com")!)
                     Link("machen on GitHub", destination: URL(string: "https://github.com/bernorieder/machen")!)
+                }
+                Section("Credits") {
+                    Link("Fist icon: Font Awesome Free (CC BY 4.0)",
+                         destination: URL(string: "https://fontawesome.com/license/free")!)
                 }
                 Section("Account") {
                     Button("Sign Out of Google") { auth.signOut() }

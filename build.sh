@@ -15,9 +15,13 @@ swift build -c release
 
 APP=build/machen.app
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/machen "$APP/Contents/MacOS/machen"
 cp Support/Info.plist "$APP/Contents/Info.plist"
+# Regenerate with: swift Support/make-icon.swift
+cp Support/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# Menu bar fist: Font Awesome Free (CC BY 4.0); keep the attribution comment in the file
+cp Support/hand-fist.svg "$APP/Contents/Resources/hand-fist.svg"
 
 CONFIG=Support/Config.local.plist
 if [[ -f "$CONFIG" ]]; then

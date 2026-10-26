@@ -66,7 +66,7 @@ To start machen whenever you log in, turn on **Settings → General → Launch a
 ## Privacy
 
 - **No server in between.** machen talks directly to Google from your Mac. It doesn't collect or send anything anywhere else.
-- **Access to your data.** machen asks Google for permission to read and change your calendars and tasks, because that's what it shows and edits.
+- **Access to your data.** machen asks Google for permission to see your list of calendars, to see and change your events, and to see and change your tasks, because that's what it shows and edits. It can't share or delete calendars, or change who has access to them.
 - **On your Mac.** Your sign-ins are stored in the macOS Keychain. A copy of the events and tasks it last loaded is kept on your Mac so it can show them offline. Removing an account in **Settings → Sources** removes its sign-in and its events and tasks.
 - **Revoking access.** You can remove machen's access to your Google account at any time at [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
 

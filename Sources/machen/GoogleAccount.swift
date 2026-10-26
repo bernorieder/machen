@@ -171,11 +171,13 @@ final class GoogleAccount: Account {
     var name: String { email.isEmpty ? "Google account" : email }
     var isActive: Bool { tokens != nil }
 
-    /// The address of the account `tokens` belong to: the id of its primary calendar.
+    /// The address of the account `tokens` belong to: the id of its primary calendar, from the
+    /// calendar list (which machen may read, unlike the calendars themselves).
     static func email(for tokens: TokenSet) async throws -> String {
         struct Primary: Decodable { let id: String }
         let api = GoogleAPI { _ in tokens.accessToken }
-        let primary: Primary = try await api.get(Endpoint.calendar("calendars", "primary", query: ["fields": "id"]))
+        let primary: Primary = try await api.get(Endpoint.calendar("users", "me", "calendarList", "primary",
+                                                                   query: ["fields": "id"]))
         return primary.id
     }
 

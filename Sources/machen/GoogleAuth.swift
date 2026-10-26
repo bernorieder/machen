@@ -7,6 +7,7 @@ enum AuthError: LocalizedError {
     case denied(String)
     case stateMismatch
     case noRefreshToken
+    case missingPermissions
     case notSignedIn
     case sessionExpired
     case timedOut
@@ -18,6 +19,7 @@ enum AuthError: LocalizedError {
         case .denied(let reason): "Google sign-in was not completed (\(reason))."
         case .stateMismatch: "The sign-in response didn't match this request. Please try again."
         case .noRefreshToken: "Google didn't return a refresh token. Remove machen at myaccount.google.com/permissions and sign in again."
+        case .missingPermissions: "machen needs every permission it asks for: to see your list of calendars, to see and edit your events, and to see and edit your tasks. Please sign in again and allow all of them."
         case .notSignedIn: "Not signed in."
         case .sessionExpired: "The Google session expired. Sign in again in Settings → Sources."
         case .timedOut: "Sign-in timed out."
@@ -30,10 +32,18 @@ enum AuthError: LocalizedError {
 /// token refresh. The tokens themselves belong to each `GoogleAccount`.
 @MainActor
 final class GoogleAuth: ObservableObject {
+    /// Only what machen uses. Not full calendar access, which would also allow sharing and
+    /// deleting calendars.
     static let scopes = [
-        "https://www.googleapis.com/auth/calendar",
+        // The calendars you're subscribed to, with their colours and default reminders
+        "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+        // Seeing, adding, changing, moving and deleting events, also in calendars shared with you
+        "https://www.googleapis.com/auth/calendar.events",
+        // Seeing, adding, changing, completing and deleting tasks
         "https://www.googleapis.com/auth/tasks",
     ]
+    /// Full calendar access, which machen 1.x asked for. It covers both calendar scopes above.
+    private static let fullCalendarScope = "https://www.googleapis.com/auth/calendar"
 
     @Published var clientID: String {
         didSet { UserDefaults.standard.set(clientID, forKey: "clientID") }
@@ -113,6 +123,12 @@ final class GoogleAuth: ObservableObject {
         if !trimmedSecret.isEmpty { form["client_secret"] = trimmedSecret }
         let response = try await tokenRequest(form)
         guard let refresh = response.refresh_token else { throw AuthError.noRefreshToken }
+        // Google lets people untick single permissions on its consent screen
+        if let granted = response.scope.map({ Set($0.split(separator: " ").map(String.init)) }),
+           !Self.scopes.allSatisfy({ granted.contains($0) || ($0.hasPrefix(Self.fullCalendarScope + ".")
+                                                               && granted.contains(Self.fullCalendarScope)) }) {
+            throw AuthError.missingPermissions
+        }
         return TokenSet(accessToken: response.access_token,
                         refreshToken: refresh,
                         expiry: Date().addingTimeInterval(response.expires_in))
@@ -149,6 +165,8 @@ final class GoogleAuth: ObservableObject {
         let access_token: String
         let expires_in: Double
         let refresh_token: String?
+        /// The permissions granted, separated by spaces.
+        let scope: String?
     }
 
     private struct TokenErrorResponse: Decodable {

@@ -18,6 +18,7 @@ Every app that uses Google's APIs needs its own OAuth client. It's free.
 3. Under **Google Auth Platform** (or **APIs & Services → OAuth consent screen**):
    - Choose **External** as the user type, and fill in the app name and your email.
    - Under **Audience**, add your own Google address as a test user.
+   - Under **Data Access**, add the three scopes machen asks for: `…/auth/calendar.calendarlist.readonly`, `…/auth/calendar.events` and `…/auth/tasks`.
 4. Under **Clients** (or **Credentials → Create credentials → OAuth client ID**), create a client of type **Desktop app**.
 5. Copy `Support/Config.example.plist` to `Support/Config.local.plist` and fill in the client ID and client secret. The file is gitignored. `build.sh` copies the values into the app, so people using your build only have to sign in. Without the file, the app asks for a client ID and secret on its sign-in screen instead.
 
@@ -29,7 +30,15 @@ Google doesn't treat a desktop client secret as confidential, since it ships ins
 - **In production, unverified:** go to **Audience → Publish app**. Anyone can sign in, up to 100 users, and they see an "unverified app" warning once (**Advanced → Go to machen**).
 - **Verified:** to remove the warning and the user limit, apply for verification on the same page. Google asks for a home page, a privacy policy, and a short video showing the sign-in. The Calendar and Tasks permissions are "sensitive", which needs this review but not the paid security assessment.
 
-machen currently asks for full access to calendars (`…/auth/calendar`) and tasks (`…/auth/tasks`). The narrower `calendar.events` plus `calendar.calendarlist.readonly` would be enough, and easier to justify in a review.
+machen asks only for what it uses:
+
+| Scope | What machen does with it |
+| --- | --- |
+| `…/auth/calendar.calendarlist.readonly` | Lists your calendars, with their names, colours and default reminders, and finds the account's address (its primary calendar's id) |
+| `…/auth/calendar.events` | Shows, adds, changes, moves and deletes events, also in calendars shared with you |
+| `…/auth/tasks` | Shows, adds, changes, completes and deletes tasks |
+
+It doesn't ask for full calendar access (`…/auth/calendar`), which would also allow sharing, creating and deleting calendars. `calendar.events.owned` would be narrower still, but wouldn't allow editing events in calendars someone shared with you.
 
 ## 2. Build
 

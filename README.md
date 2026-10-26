@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="Support/AppIcon.png" width="128" height="128" alt="machen app icon: a red raised fist on a white tile">
+</p>
+
 # machen
 
 A small macOS menu bar app for Google Calendar and Google Tasks.

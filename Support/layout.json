@@ -1,7 +1,10 @@
 {
   "_about": "Layout values for machen, in points unless noted. build.sh turns this file into Sources/machen/Layout.generated.swift; rebuild to apply changes. Keys starting with _ are comments.",
 
-  "popover": { "width": 360, "height": 540 },
+  "popover": {
+    "width": 360,
+    "height": { "_about": "Settings → Styling → Panel height", "short": 440, "standard": 540, "tall": 680, "extraTall": 820 }
+  },
 
   "list": {
     "_about": "The scrolling list of events and tasks",

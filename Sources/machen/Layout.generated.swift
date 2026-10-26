@@ -40,7 +40,12 @@ enum Layout {
         static let fistHeight: CGFloat = 14.0
     }
     enum Popover {
-        static let height: CGFloat = 540.0
+        enum Height {
+            static let extraTall: CGFloat = 820.0
+            static let short: CGFloat = 440.0
+            static let standard: CGFloat = 540.0
+            static let tall: CGFloat = 680.0
+        }
         static let width: CGFloat = 360.0
     }
     enum Row {

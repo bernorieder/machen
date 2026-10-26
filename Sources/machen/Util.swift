@@ -328,3 +328,33 @@ extension EnvironmentValues {
         set { self[TextSizesKey.self] = newValue }
     }
 }
+
+/// Height of the menu bar panel, chosen in Settings → Styling (sizes in Layout.Popover.Height).
+enum PanelHeight: String, CaseIterable, Identifiable {
+    case short, standard, tall, extraTall
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .short: "Short"
+        case .standard: "Standard"
+        case .tall: "Tall"
+        case .extraTall: "Extra tall"
+        }
+    }
+
+    var points: CGFloat {
+        switch self {
+        case .short: Layout.Popover.Height.short
+        case .standard: Layout.Popover.Height.standard
+        case .tall: Layout.Popover.Height.tall
+        case .extraTall: Layout.Popover.Height.extraTall
+        }
+    }
+
+    /// `points`, but never taller than the space below the menu bar on the current screen.
+    var fittedPoints: CGFloat {
+        guard let available = NSScreen.main?.visibleFrame.height else { return points }
+        return min(points, available - 20)
+    }
+}

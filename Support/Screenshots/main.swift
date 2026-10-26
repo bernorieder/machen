@@ -90,7 +90,7 @@ let tasks = TaskItem.arranged([
 /// Renders a view at popover size through AppKit (so real controls draw) and frames it like the popover.
 @MainActor
 func screenshot<V: View>(_ view: V, store: Store, dark: Bool, name: String) {
-    let size = NSSize(width: Layout.Popover.width, height: Layout.Popover.height)
+    let size = NSSize(width: Layout.Popover.width, height: PanelHeight.standard.points)
     let content = view
         .frame(width: size.width, height: size.height)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -154,5 +154,7 @@ MainActor.assumeIsolated {
 
     screenshot(AgendaView(route: .constant(.agenda)), store: store, dark: false, name: "agenda-light.png")
     screenshot(AgendaView(route: .constant(.agenda)), store: store, dark: true, name: "agenda-dark.png")
-    screenshot(SettingsView(onClose: {}), store: store, dark: false, name: "settings-light.png")
+    for panel in SettingsPanel.allCases {
+        screenshot(SettingsView(panel: panel, onClose: {}), store: store, dark: false, name: "settings-\(panel.rawValue).png")
+    }
 }

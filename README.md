@@ -7,10 +7,16 @@
 A small macOS menu bar app for Google Calendar and Google Tasks.
 
 <p align="center">
-  <img src="docs/screenshots/agenda-light.png" width="270" alt="machen in light mode: today's events, then open tasks grouped by list, with subtasks indented">
-  <img src="docs/screenshots/agenda-dark.png" width="270" alt="machen in dark mode">
-  <img src="docs/screenshots/settings-light.png" width="270" alt="machen settings: days of events, multi-day events, task filter, menu bar icon, text sizes and spacing">
+  <img src="docs/screenshots/agenda-light.png" width="300" alt="machen in light mode: today's events, then open tasks grouped by list, with subtasks indented">
+  <img src="docs/screenshots/agenda-dark.png" width="300" alt="machen in dark mode">
 </p>
+<p align="center">
+  <img src="docs/screenshots/settings-general.png" width="220" alt="Settings, General: days of events, multi-day events, task filter, launch at login and notifications">
+  <img src="docs/screenshots/settings-sources.png" width="220" alt="Settings, Sources: calendars and task lists with checkboxes, drag handles and list colours">
+  <img src="docs/screenshots/settings-styling.png" width="220" alt="Settings, Styling: menu bar icon, text sizes and spacing">
+</p>
+
+Settings has three pages: **General** (what's shown, launch at login, notifications, links, account), **Sources** (which calendars and task lists, their order and list colours) and **Styling** (menu bar icon, text sizes, panel height, spacing).
 
 Click the icon in the menu bar to see:
 
@@ -27,7 +33,7 @@ Requires macOS 14 or later.
 
 Download the latest `machen-<version>.dmg` from the GitHub Releases page, open it, and drag **machen** to **Applications**. Start it, click the menu bar icon, and click **Sign in with Google**. Your browser opens. Approve access, then click the menu bar icon again.
 
-Turn on **Settings → Launch at login** if you want machen to start automatically.
+Turn on **Settings → General → Launch at login** if you want machen to start automatically.
 
 ## Building it yourself
 
@@ -84,12 +90,12 @@ This builds and signs the app, packs it into `build/machen-<version>.dmg`, and h
 
 - **Storage:** the sign-in token is stored in your macOS Keychain. A built-in client ID and secret live inside the app bundle; ones you enter yourself are stored in the app's preferences. (Google doesn't treat a Desktop client secret as confidential, but keep it out of the public repository anyway.)
 - **Keychain prompt:** a Keychain item trusts the app that created it. machen recreates its item from the running build, so with a Developer ID signature it's tied to your team and later builds don't ask again. You may be asked once, when first switching from an ad-hoc build: click **Always Allow**. Ad-hoc builds ask after every rebuild.
-- **Display:** clicking the **Events** heading switches between Today, 2 days, 3 days and Week. In **Settings → Display** you can choose any number of days of events to show (1 to 14) and the row spacing (Compact, Standard or Roomy). When more than one day is shown, events are grouped under day headings. The **Multi-day events** menu sets how events lasting more than a day are handled: show them on every day they cover, show each one once, or exclude them. With **Show on today and start day**, an event running today appears once under Today. An event that starts later in the shown days appears once, on its start day, marked "Starts". (A multi-day event is an all-day event longer than one day, or a timed event lasting 24 hours or more. An overnight event such as 22:00–06:00 doesn't count.)
-- **Text size:** Settings → Display has three size menus, each with Small, Medium (the standard size), Large or Extra Large. They apply to events and tasks alike. **Headings** covers EVENTS and TASKS, the day headings and the list names. **Item names** covers event and task titles. **Item details** covers times, places, notes, due dates, and subtasks.
-- **Tasks filter:** choose **All** or **Due date only**, either in Settings → Display or by clicking the **Tasks** heading in the main screen. With **Due date only**, a parent task without a date stays visible if one of its subtasks has a date.
-- **Menu bar icon:** pick one of several icons in Settings → Display, including the fist from the app icon.
-- **Links:** Settings has shortcuts to Google Calendar, Google Tasks, and this project on GitHub.
-- **Choosing what's shown:** **Settings** (gear icon) lets you pick which calendars and task lists to show, and a colour for each task list. (Google Tasks lists have no colours of their own.) By default you see the calendars that are visible in Google Calendar, plus all task lists. Drag calendars and task lists by their handle (☰) to reorder them. Task lists appear in that order in the main screen. Calendar order decides which event comes first when several start at the same time. Reordering doesn't change a list's colour.
+- **Display:** clicking the **Events** heading switches between Today, 2 days, 3 days and Week. In **Settings → General** you can choose any number of days of events to show (1 to 14); the row spacing (Compact, Standard or Roomy) is under **Settings → Styling**. When more than one day is shown, events are grouped under day headings. The **Multi-day events** menu sets how events lasting more than a day are handled: show them on every day they cover, show each one once, or exclude them. With **Show on today and start day**, an event running today appears once under Today. An event that starts later in the shown days appears once, on its start day, marked "Starts". (A multi-day event is an all-day event longer than one day, or a timed event lasting 24 hours or more. An overnight event such as 22:00–06:00 doesn't count.)
+- **Text size:** Settings → Styling has three size menus, each with Small, Medium (the standard size), Large or Extra Large. They apply to events and tasks alike. **Headings** covers EVENTS and TASKS, the day headings and the list names. **Item names** covers event and task titles. **Item details** covers times, places, notes, due dates, and subtasks.
+- **Tasks filter:** choose **All** or **Due date only**, either in Settings → General or by clicking the **Tasks** heading in the main screen. With **Due date only**, a parent task without a date stays visible if one of its subtasks has a date.
+- **Menu bar icon:** pick one of several icons in Settings → Styling, including the fist from the app icon.
+- **Links:** Settings → General has shortcuts to Google Calendar, Google Tasks, and this project on GitHub.
+- **Choosing what's shown:** **Settings → Sources** (gear icon) lets you pick which calendars and task lists to show, and a colour for each task list. (Google Tasks lists have no colours of their own.) By default you see the calendars that are visible in Google Calendar, plus all task lists. Drag calendars and task lists by their handle (☰) to reorder them. Task lists appear in that order in the main screen. Calendar order decides which event comes first when several start at the same time. Reordering doesn't change a list's colour.
 - **Offline:** machen keeps the last loaded calendars, events and tasks in `~/Library/Application Support/io.github.bernorieder.machen/cache.json`, readable only by you. It shows them right away at launch, and when you're offline. Signing out deletes the file.
 - **Notifications:** machen shows a notification for each popup reminder you've set in Google Calendar: the event's own, or its calendar's defaults. It covers the calendars shown in machen, and adds a **Join** button for video calls. macOS asks for permission the first time. Turn them off in **Settings → General → Event notifications** if Google already notifies you elsewhere. machen looks up to 4 weeks ahead, Google's maximum, so reminders like "1 week before" work too. Notifications only come while machen is running: it removes pending ones when you quit, so nothing outdated fires while it's closed. After your Mac wakes up, machen refreshes right away.
 - **Sync:** machen loads everything at launch, refreshes in the background whenever you open it (unless it just did), checks events every minute and everything else every 5 minutes, and refreshes after every edit. Each events check costs one request per shown calendar, so keep this in mind if many people share your Google project: its default quota is 1 million Calendar requests a day.

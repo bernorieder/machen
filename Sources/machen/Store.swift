@@ -157,6 +157,10 @@ final class Store: ObservableObject {
         TextSizes(heading: headingTextSize, name: nameTextSize, detail: detailTextSize)
     }
 
+    @Published var panelHeight: PanelHeight {
+        didSet { UserDefaults.standard.set(panelHeight.rawValue, forKey: "panelHeight") }
+    }
+
     @Published var density: RowDensity {
         didSet { UserDefaults.standard.set(density.rawValue, forKey: "density") }
     }
@@ -196,6 +200,7 @@ final class Store: ObservableObject {
         collapsed = Set(UserDefaults.standard.stringArray(forKey: "collapsed") ?? [])
         customOrder = UserDefaults.standard.dictionary(forKey: "customOrder") as? [String: [String]] ?? [:]
         density = UserDefaults.standard.string(forKey: "density").flatMap(RowDensity.init) ?? .standard
+        panelHeight = UserDefaults.standard.string(forKey: "panelHeight").flatMap(PanelHeight.init) ?? .standard
         headingTextSize = UserDefaults.standard.string(forKey: "headingTextSize").flatMap(TextSize.init) ?? .medium
         nameTextSize = UserDefaults.standard.string(forKey: "nameTextSize").flatMap(TextSize.init) ?? .medium
         detailTextSize = UserDefaults.standard.string(forKey: "detailTextSize").flatMap(TextSize.init) ?? .medium

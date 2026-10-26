@@ -76,7 +76,7 @@ This builds and signs the app, packs it into `build/machen-<version>.dmg`, and h
 - **Tasks filter:** choose **All** or **Due date only**, either in Settings → Display or by clicking the **Tasks** heading in the main screen. With **Due date only**, a parent task without a date stays visible if one of its subtasks has a date.
 - **Menu bar icon:** pick one of several icons in Settings → Display, including the fist from the app icon.
 - **Links:** Settings has shortcuts to Google Calendar, Google Tasks, and this project on GitHub.
-- **Choosing what's shown:** **Settings** (gear icon) lets you pick which calendars and task lists to show, and a colour for each task list. (Google Tasks lists have no colours of their own.) By default you see the calendars that are visible in Google Calendar, plus all task lists.
+- **Choosing what's shown:** **Settings** (gear icon) lets you pick which calendars and task lists to show, and a colour for each task list. (Google Tasks lists have no colours of their own.) By default you see the calendars that are visible in Google Calendar, plus all task lists. Drag calendars and task lists by their handle (☰) to reorder them. Task lists appear in that order in the main screen. Calendar order decides which event comes first when several start at the same time. Reordering doesn't change a list's colour.
 - **Sync:** the app loads everything when it starts. After that it refreshes when you open it (at most once a minute), every 5 minutes, and after every edit.
 - **Limitations:**
   - Google Tasks only stores a due *date*, not a time.

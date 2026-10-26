@@ -149,10 +149,41 @@ struct CalendarEvent: Identifiable, Hashable {
         link = e.htmlLink.flatMap(URL.init(string:))
     }
 
-    static func order(_ a: CalendarEvent, _ b: CalendarEvent) -> Bool {
-        if a.isAllDay != b.isAllDay { return a.isAllDay }
-        if a.start != b.start { return a.start < b.start }
-        return a.title.localizedCompare(b.title) == .orderedAscending
+    /// All-day events first, then by start time. Ties follow the calendar order from Settings
+    /// (`calendarRank`: calendar id → position), then the title.
+    static func order(calendarRank: [String: Int]) -> (CalendarEvent, CalendarEvent) -> Bool {
+        { a, b in
+            if a.isAllDay != b.isAllDay { return a.isAllDay }
+            if a.start != b.start { return a.start < b.start }
+            let ra = calendarRank[a.calendarID] ?? .max, rb = calendarRank[b.calendarID] ?? .max
+            if ra != rb { return ra < rb }
+            return a.title.localizedCompare(b.title) == .orderedAscending
+        }
+    }
+}
+
+/// The order of calendars and task lists that the user drags into place in Settings.
+enum CustomOrder {
+    /// `items` sorted by their position in `order`; items missing from it keep their original
+    /// order and come after the others (for example a newly added calendar).
+    static func apply<T>(_ order: [String], to items: [T], id: (T) -> String) -> [T] {
+        let rank = Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        return items.enumerated().sorted { a, b in
+            let ra = rank[id(a.element)] ?? .max, rb = rank[id(b.element)] ?? .max
+            return ra != rb ? ra < rb : a.offset < b.offset
+        }.map(\.element)
+    }
+
+    /// `ids` with `dragged` moved into `target`'s place: before it when moving up, after it when
+    /// moving down. Nil when either id is missing or they're the same.
+    static func move(_ dragged: String, onto target: String, in ids: [String]) -> [String]? {
+        guard dragged != target, let from = ids.firstIndex(of: dragged), let to = ids.firstIndex(of: target) else {
+            return nil
+        }
+        var result = ids
+        result.remove(at: from)
+        result.insert(dragged, at: to)
+        return result
     }
 }
 

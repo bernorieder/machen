@@ -72,9 +72,10 @@ final class Store: ObservableObject {
             Task { await refreshEvents() }
         }
     }
-    @Published private(set) var calendars: [CalendarInfo] = []
+    /// Calendars and task lists as Google returns them; `calendars` and `taskLists` apply the custom order.
+    @Published private var fetchedCalendars: [CalendarInfo] = []
     @Published private(set) var events: [CalendarEvent] = []
-    @Published private(set) var taskLists: [TaskListInfo] = []
+    @Published private var fetchedTaskLists: [TaskListInfo] = []
     @Published private(set) var tasks: [TaskItem] = []
     @Published private(set) var isLoading = false
     @Published private(set) var lastSync: Date?
@@ -101,6 +102,11 @@ final class Store: ObservableObject {
         didSet { UserDefaults.standard.set(density.rawValue, forKey: "density") }
     }
 
+    /// Ids in the order dragged into place in Settings, under "calendars" and "lists".
+    @Published private var customOrder: [String: [String]] {
+        didSet { UserDefaults.standard.set(customOrder, forKey: "customOrder") }
+    }
+
     /// Collapsed task lists ("list:<id>") and parents with hidden subtasks ("task:<listID>/<taskID>").
     @Published private var collapsed: Set<String> {
         didSet { UserDefaults.standard.set(Array(collapsed), forKey: "collapsed") }
@@ -124,6 +130,7 @@ final class Store: ObservableObject {
         visibility = UserDefaults.standard.dictionary(forKey: "visibility") as? [String: Bool] ?? [:]
         listColors = UserDefaults.standard.dictionary(forKey: "listColors") as? [String: String] ?? [:]
         collapsed = Set(UserDefaults.standard.stringArray(forKey: "collapsed") ?? [])
+        customOrder = UserDefaults.standard.dictionary(forKey: "customOrder") as? [String: [String]] ?? [:]
         density = UserDefaults.standard.string(forKey: "density").flatMap(RowDensity.init) ?? .standard
         taskFilter = UserDefaults.standard.string(forKey: "taskFilter").flatMap(TaskFilter.init) ?? .all
         menuBarIcon = UserDefaults.standard.string(forKey: "menuBarIcon") ?? "calendar"
@@ -148,6 +155,32 @@ final class Store: ObservableObject {
     var shownEventCount: Int {
         Set(eventsByDay.flatMap { $0.events.map(\.id) }).count
     }
+    var calendars: [CalendarInfo] {
+        CustomOrder.apply(customOrder["calendars"] ?? [], to: fetchedCalendars, id: \.id)
+    }
+
+    var taskLists: [TaskListInfo] {
+        CustomOrder.apply(customOrder["lists"] ?? [], to: fetchedTaskLists, id: \.id)
+    }
+
+    /// Moves a calendar into another one's place (drag and drop in Settings).
+    func moveCalendar(_ id: String, onto target: String) {
+        guard let ids = CustomOrder.move(id, onto: target, in: calendars.map(\.id)) else { return }
+        customOrder["calendars"] = ids
+        events = sortedEvents(events)
+    }
+
+    /// Moves a task list into another one's place (drag and drop in Settings).
+    func moveTaskList(_ id: String, onto target: String) {
+        guard let ids = CustomOrder.move(id, onto: target, in: taskLists.map(\.id)) else { return }
+        customOrder["lists"] = ids
+    }
+
+    private func sortedEvents(_ events: [CalendarEvent]) -> [CalendarEvent] {
+        let rank = Dictionary(calendars.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return events.sorted(by: CalendarEvent.order(calendarRank: rank))
+    }
+
     var writableCalendars: [CalendarInfo] { calendars.filter(\.canEdit) }
     var defaultCalendarID: String? {
         writableCalendars.first(where: { $0.primary == true })?.id ?? writableCalendars.first?.id
@@ -187,7 +220,8 @@ final class Store: ObservableObject {
 
     func colorHex(for list: TaskListInfo) -> String {
         if let hex = listColors[list.id] { return hex }
-        let index = taskLists.firstIndex(of: list) ?? 0
+        // Google's order, so dragging a list in Settings doesn't change its color
+        let index = fetchedTaskLists.firstIndex(of: list) ?? 0
         return ListPalette.colors[index % ListPalette.colors.count].hex
     }
 
@@ -248,8 +282,8 @@ final class Store: ObservableObject {
         do {
             async let cals = fetchCalendars()
             async let lists = fetchTaskLists()
-            calendars = try await cals
-            taskLists = try await lists
+            fetchedCalendars = try await cals
+            fetchedTaskLists = try await lists
 
             let d = day, n = eventDays
             async let ev = fetchEvents(from: d, days: n)
@@ -289,9 +323,9 @@ final class Store: ObservableObject {
     }
 
     func clear() {
-        calendars = []
+        fetchedCalendars = []
         events = []
-        taskLists = []
+        fetchedTaskLists = []
         tasks = []
         lastSync = nil
         errorMessage = nil
@@ -323,7 +357,7 @@ final class Store: ObservableObject {
             }
             var all: [CalendarEvent] = []
             for try await items in group { all += items }
-            return all.sorted(by: CalendarEvent.order)
+            return sortedEvents(all)
         }
     }
 

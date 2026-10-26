@@ -115,21 +115,29 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                 }
-                Section("Calendars") {
+                Section {
                     ForEach(store.calendars) { cal in
-                        Toggle(isOn: Binding(get: { store.isShown(cal) }, set: { store.setShown(cal, $0) })) {
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(Color(hex: cal.backgroundColor) ?? .accentColor)
-                                    .frame(width: 8, height: 8)
-                                Text(cal.name).lineLimit(1)
+                        ReorderRow(id: cal.id, onDrop: { store.moveCalendar($0, onto: cal.id) }) {
+                            Toggle(isOn: Binding(get: { store.isShown(cal) }, set: { store.setShown(cal, $0) })) {
+                                HStack(spacing: 6) {
+                                    Circle()
+                                        .fill(Color(hex: cal.backgroundColor) ?? .accentColor)
+                                        .frame(width: 8, height: 8)
+                                    Text(cal.name).lineLimit(1)
+                                }
                             }
                         }
                     }
+                } header: {
+                    Text("Calendars")
+                } footer: {
+                    Text("Drag to reorder. Events at the same time follow this order.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                Section("Task lists") {
+                Section {
                     ForEach(store.taskLists) { list in
-                        HStack(spacing: 8) {
+                        ReorderRow(id: list.id, onDrop: { store.moveTaskList($0, onto: list.id) }) {
                             Menu {
                                 ForEach(ListPalette.colors, id: \.hex) { color in
                                     Button {
@@ -148,6 +156,12 @@ struct SettingsView: View {
                             Toggle(list.title, isOn: Binding(get: { store.isShown(list) }, set: { store.setShown(list, $0) }))
                         }
                     }
+                } header: {
+                    Text("Task lists")
+                } footer: {
+                    Text("Drag to reorder the lists in the main screen.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 Section("General") {
                     Toggle("Launch at login", isOn: $launchAtLogin)
@@ -184,5 +198,42 @@ struct SettingsView: View {
                 launchAtLogin = SMAppService.mainApp.status == .enabled
             }
         }
+    }
+}
+
+/// A Settings row with a drag handle. Dropping another row of the same section onto it moves
+/// that row into this one's place.
+struct ReorderRow<Content: View>: View {
+    let id: String
+    let onDrop: (_ draggedID: String) -> Void
+    let content: Content
+    @ViewState private var isTargeted = false
+
+    init(id: String, onDrop: @escaping (_ draggedID: String) -> Void, @ViewBuilder content: () -> Content) {
+        self.id = id
+        self.onDrop = onDrop
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "line.3.horizontal")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .help("Drag to reorder")
+            content
+        }
+        .contentShape(Rectangle())
+        .draggable(id)
+        .dropDestination(for: String.self) { items, _ in
+            guard let dragged = items.first else { return false }
+            onDrop(dragged)
+            return true
+        } isTargeted: { isTargeted = $0 }
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.accentColor.opacity(isTargeted ? 0.18 : 0))
+                .padding(-4)
+        )
     }
 }

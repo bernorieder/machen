@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct EventDay: Identifiable {
@@ -64,6 +65,14 @@ enum Sync {
     static let openThreshold: TimeInterval = 10
     /// Days of events loaded even when fewer are shown, so reminders for early tomorrow fire.
     static let minimumDaysLoaded = 2
+    /// How far ahead the 5-minute sync looks for reminders ("1 week before" and so on).
+    /// Google allows reminders up to 4 weeks before an event.
+    static let reminderWindowDays = 28
+    /// Only the fields notifications need, to keep the 4-week request small.
+    static let reminderFields = "items(id,status,summary,description,location,start,end,attendees(self,responseStatus),"
+        + "reminders,hangoutLink,conferenceData(entryPoints(entryPointType,uri)),recurringEventId,colorId,htmlLink),nextPageToken"
+    /// After waking from sleep, wait this long for the network before refreshing.
+    static let wakeDelay: TimeInterval = 5
 }
 
 /// Holds the synced calendar and task data and performs edits against Google.
@@ -170,8 +179,11 @@ final class Store: ObservableObject {
     let auth: GoogleAuth
     private let api: GoogleAPI
     private var timer: Timer?
+    private var wakeObserver: NSObjectProtocol?
     /// Last time everything (not just events) was refreshed.
     private var lastFullSync: Date?
+    /// Events up to `Sync.reminderWindowDays` ahead, only for scheduling notifications.
+    private var reminderEvents: [CalendarEvent] = []
     private var loadCount = 0 {
         didSet { isLoading = loadCount > 0 }
     }
@@ -195,6 +207,15 @@ final class Store: ObservableObject {
         eventDays = Self.eventDayRange.contains(savedDays) ? savedDays : 1
         timer = Timer.scheduledTimer(withTimeInterval: Sync.eventsInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.tick() }
+        }
+        // The timer pauses during sleep, so catch up right after waking
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(Sync.wakeDelay))
+                await self?.refreshAfterWake()
+            }
         }
         // Show what was loaded last time right away, then refresh.
         loadCache()
@@ -317,11 +338,7 @@ final class Store: ObservableObject {
 
     /// Every minute: events, and everything else every few minutes.
     private func tick() async {
-        let now = Date().startOfDay
-        if now != day {
-            day = now
-            events = []
-        }
+        rollOverDay()
         guard loadCount == 0 else { return }
         if lastFullSync.map({ Date().timeIntervalSince($0) >= Sync.fullInterval }) ?? true {
             await refresh()
@@ -331,6 +348,19 @@ final class Store: ObservableObject {
     }
 
     // MARK: Sync
+
+    private func refreshAfterWake() async {
+        rollOverDay()
+        await refresh()
+    }
+
+    private func rollOverDay() {
+        let now = Date().startOfDay
+        if now != day {
+            day = now
+            events = []
+        }
+    }
 
     /// Called whenever the panel opens; the cached data shows while this runs.
     func refreshOnOpen() async {
@@ -363,6 +393,7 @@ final class Store: ObservableObject {
             errorMessage = nil
             saveCache()
             await scheduleReminders()
+            await refreshReminderWindow()
         } catch {
             report(error)
         }
@@ -405,6 +436,7 @@ final class Store: ObservableObject {
         lastSync = nil
         errorMessage = nil
         recentlyCompleted = nil
+        reminderEvents = []
         deleteCache()
         Task { await Notifier.shared?.removeAll() }
     }
@@ -425,8 +457,23 @@ final class Store: ObservableObject {
         if notificationsBlocked {
             await notifier.removeAll()
         } else {
-            await notifier.schedule(ReminderNotification.upcoming(for: events))
+            await notifier.schedule(ReminderNotification.upcoming(for: eventsForReminders))
         }
+    }
+
+    private var eventsForReminders: [CalendarEvent] {
+        ReminderNotification.sources(loaded: events, window: reminderEvents, loadedEnd: day.adding(days: daysToLoad))
+    }
+
+    /// Loads events up to 4 weeks ahead for notifications only (on the 5-minute sync and after
+    /// event edits), then reschedules. Skipped while notifications are off, to save requests.
+    private func refreshReminderWindow() async {
+        guard auth.isSignedIn, notificationsEnabled, Notifier.shared != nil, !notificationsBlocked else { return }
+        if let upcoming = try? await fetchEvents(from: day, days: Sync.reminderWindowDays, fields: Sync.reminderFields) {
+            reminderEvents = upcoming
+            saveCache()
+        }
+        await scheduleReminders()
     }
 
     private func report(_ error: Error) {
@@ -446,12 +493,12 @@ final class Store: ObservableObject {
         return result.sorted { ($0.primary == true ? 0 : 1, $0.name) < ($1.primary == true ? 0 : 1, $1.name) }
     }
 
-    private func fetchEvents(from day: Date, days: Int) async throws -> [CalendarEvent] {
+    private func fetchEvents(from day: Date, days: Int, fields: String? = nil) async throws -> [CalendarEvent] {
         let visible = calendars.filter(isShown)
         let start = day, end = day.adding(days: days)
         return try await withThrowingTaskGroup(of: [CalendarEvent].self) { group in
             for cal in visible {
-                group.addTask { try await self.fetchEvents(in: cal, from: start, to: end) }
+                group.addTask { try await self.fetchEvents(in: cal, from: start, to: end, fields: fields) }
             }
             var all: [CalendarEvent] = []
             for try await items in group { all += items }
@@ -459,7 +506,8 @@ final class Store: ObservableObject {
         }
     }
 
-    private func fetchEvents(in cal: CalendarInfo, from start: Date, to end: Date) async throws -> [CalendarEvent] {
+    private func fetchEvents(in cal: CalendarInfo, from start: Date, to end: Date,
+                             fields: String? = nil) async throws -> [CalendarEvent] {
         var result: [CalendarEvent] = []
         var token: String?
         repeat {
@@ -472,6 +520,7 @@ final class Store: ObservableObject {
                     "orderBy": "startTime",
                     "maxResults": "250",
                     "pageToken": token,
+                    "fields": fields,
                 ]))
             result += (page.items ?? []).compactMap { CalendarEvent($0, calendar: cal) }
             token = page.nextPageToken
@@ -553,6 +602,7 @@ final class Store: ObservableObject {
             try await api.send("POST", Endpoint.calendar("calendars", d.calendarID, "events"), body: body)
         }
         await refreshEvents()
+        await refreshReminderWindow()
     }
 
     /// Deletes an event, or with `.allEvents` the whole series an occurrence belongs to.
@@ -565,6 +615,7 @@ final class Store: ObservableObject {
             event.calendarID == home && (event.eventID == id || (series != nil && event.recurringEventID == series))
         }
         saveCache()
+        await refreshReminderWindow()
     }
 
     /// Start of an event as stored by Google (for a series: its first occurrence).
@@ -662,6 +713,8 @@ final class Store: ObservableObject {
         var eventsFrom: Date
         var eventDays: Int
         var lastSync: Date?
+        /// Optional so caches written before it existed still load.
+        var reminderEvents: [CalendarEvent]?
     }
 
     /// ~/Library/Application Support/<bundle id>/cache.json; none for the screenshot tool or `swift run`.
@@ -683,13 +736,15 @@ final class Store: ObservableObject {
         fetchedTaskLists = cache.taskLists
         tasks = cache.tasks
         if cache.eventsFrom == day, cache.eventDays == eventDays { events = cache.events }
+        reminderEvents = cache.reminderEvents ?? []
         lastSync = cache.lastSync
     }
 
     private func saveCache() {
         guard auth.isSignedIn, let url = Self.cacheURL else { return }
         let cache = Cache(calendars: fetchedCalendars, taskLists: fetchedTaskLists, tasks: tasks,
-                          events: events, eventsFrom: day, eventDays: eventDays, lastSync: lastSync)
+                          events: events, eventsFrom: day, eventDays: eventDays, lastSync: lastSync,
+                          reminderEvents: reminderEvents)
         guard let data = try? JSONEncoder().encode(cache) else { return }
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         // Readable only by you: it holds your calendar and task data

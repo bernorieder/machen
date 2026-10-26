@@ -11,6 +11,12 @@ struct ReminderNotification: Equatable {
 
     static let idPrefix = "reminder:"
 
+    /// Events to schedule reminders for: the loaded days (refreshed every minute, so the fresher
+    /// source there), plus events from the 4-week window that start after them.
+    static func sources(loaded: [CalendarEvent], window: [CalendarEvent], loadedEnd: Date) -> [CalendarEvent] {
+        loaded + window.filter { $0.start >= loadedEnd }
+    }
+
     /// Notifications for the popup reminders of `events` that are still ahead (declined events skipped).
     static func upcoming(for events: [CalendarEvent], now: Date = Date()) -> [ReminderNotification] {
         events.filter { !$0.declined }.flatMap { event in
@@ -74,6 +80,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     private override init() {
         super.init()
         center.delegate = self
+        // Remove what's still scheduled when machen quits, so nothing outdated fires while it's
+        // closed (macOS would deliver it without asking machen). Launching schedules them again.
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
+                                               queue: .main) { _ in
+            UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        }
         let join = UNNotificationAction(identifier: Self.joinAction, title: "Join", options: [.foreground])
         center.setNotificationCategories([
             UNNotificationCategory(identifier: Self.callCategory, actions: [join], intentIdentifiers: []),

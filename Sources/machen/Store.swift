@@ -98,6 +98,22 @@ final class Store: ObservableObject {
         didSet { UserDefaults.standard.set(menuBarIcon, forKey: "menuBarIcon") }
     }
 
+    @Published var headingTextSize: TextSize {
+        didSet { UserDefaults.standard.set(headingTextSize.rawValue, forKey: "headingTextSize") }
+    }
+
+    @Published var nameTextSize: TextSize {
+        didSet { UserDefaults.standard.set(nameTextSize.rawValue, forKey: "nameTextSize") }
+    }
+
+    @Published var detailTextSize: TextSize {
+        didSet { UserDefaults.standard.set(detailTextSize.rawValue, forKey: "detailTextSize") }
+    }
+
+    var textSizes: TextSizes {
+        TextSizes(heading: headingTextSize, name: nameTextSize, detail: detailTextSize)
+    }
+
     @Published var density: RowDensity {
         didSet { UserDefaults.standard.set(density.rawValue, forKey: "density") }
     }
@@ -132,6 +148,9 @@ final class Store: ObservableObject {
         collapsed = Set(UserDefaults.standard.stringArray(forKey: "collapsed") ?? [])
         customOrder = UserDefaults.standard.dictionary(forKey: "customOrder") as? [String: [String]] ?? [:]
         density = UserDefaults.standard.string(forKey: "density").flatMap(RowDensity.init) ?? .standard
+        headingTextSize = UserDefaults.standard.string(forKey: "headingTextSize").flatMap(TextSize.init) ?? .medium
+        nameTextSize = UserDefaults.standard.string(forKey: "nameTextSize").flatMap(TextSize.init) ?? .medium
+        detailTextSize = UserDefaults.standard.string(forKey: "detailTextSize").flatMap(TextSize.init) ?? .medium
         taskFilter = UserDefaults.standard.string(forKey: "taskFilter").flatMap(TaskFilter.init) ?? .all
         menuBarIcon = UserDefaults.standard.string(forKey: "menuBarIcon") ?? "calendar"
         multiDayMode = UserDefaults.standard.string(forKey: "multiDayMode").flatMap(MultiDayMode.init) ?? .everyDay

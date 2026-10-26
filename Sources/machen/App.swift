@@ -55,6 +55,7 @@ struct RootView: View {
         }
         .frame(width: 360, height: 540)
         .environment(\.rowDensity, store.density)
+        .environment(\.textSizes, store.textSizes)
         .task { await store.refreshIfStale() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             Task { await store.refreshIfStale() }

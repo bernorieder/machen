@@ -272,3 +272,55 @@ extension EnvironmentValues {
         set { self[RowDensityKey.self] = newValue }
     }
 }
+
+/// A text size step chosen in Settings. Medium keeps the system sizes.
+enum TextSize: String, CaseIterable, Identifiable {
+    case small, medium, large, extraLarge
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .small: "Small"
+        case .medium: "Medium"
+        case .large: "Large"
+        case .extraLarge: "Extra Large"
+        }
+    }
+
+    private var scale: CGFloat {
+        switch self {
+        case .small: 0.9
+        case .medium: 1
+        case .large: 1.15
+        case .extraLarge: 1.3
+        }
+    }
+
+    /// `base` (the Medium size in points) scaled and rounded to a whole point.
+    func points(_ base: CGFloat) -> CGFloat { (base * scale).rounded() }
+
+    func font(_ base: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .system(size: points(base), weight: weight)
+    }
+}
+
+/// The three text sizes from Settings, shared by events and tasks:
+/// - `heading`: EVENTS / TASKS, day headings and list names (12 pt at Medium)
+/// - `name`: event and task titles (12 pt)
+/// - `detail`: times, places, notes, due dates, and subtasks (10 pt; subtask titles 11 pt)
+struct TextSizes: Equatable {
+    var heading = TextSize.medium
+    var name = TextSize.medium
+    var detail = TextSize.medium
+}
+
+private struct TextSizesKey: EnvironmentKey {
+    static let defaultValue = TextSizes()
+}
+
+extension EnvironmentValues {
+    var textSizes: TextSizes {
+        get { self[TextSizesKey.self] }
+        set { self[TextSizesKey.self] = newValue }
+    }
+}

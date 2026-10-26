@@ -125,19 +125,21 @@ struct EventRow: View {
     /// Marks the start-day appearance of a multi-day event that is shown only once.
     var startsHere = false
     let action: () -> Void
+    @Environment(\.textSizes) private var sizes
 
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: density.lineGap) {
                 Text(event.title)
+                    .font(sizes.name.font(12))
                     .strikethrough(event.declined)
                     .lineLimit(2)
                 Text(timeText)
-                    .font(.caption)
+                    .font(sizes.detail.font(10))
                     .foregroundStyle(.secondary)
                 if !event.location.isEmpty {
                     Text(event.location)
-                        .font(.caption)
+                        .font(sizes.detail.font(10))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -180,6 +182,7 @@ struct TaskRow: View {
     var subtaskCount = 0
     var subtasksCollapsed = false
     var onToggleSubtasks: (() -> Void)? = nil
+    @Environment(\.textSizes) private var sizes
     @ViewState private var checked = false
 
     var body: some View {
@@ -193,7 +196,7 @@ struct TaskRow: View {
                 }
             } label: {
                 Image(systemName: checked ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: sub ? 12 : 14))
+                    .font(.system(size: sub ? sizes.detail.points(12) : sizes.name.points(13)))
                     .foregroundStyle(checked ? Color.accentColor : Color.secondary)
             }
             .buttonStyle(.plain)
@@ -202,7 +205,7 @@ struct TaskRow: View {
             Button(action: action) {
                 VStack(alignment: .leading, spacing: density.lineGap) {
                     Text(task.title.isEmpty ? "(No title)" : task.title)
-                        .font(sub ? .subheadline : .body)
+                        .font(sub ? sizes.detail.font(11) : sizes.name.font(12))
                         .strikethrough(checked)
                         .lineLimit(2)
                     if !task.notes.isEmpty {
@@ -215,7 +218,7 @@ struct TaskRow: View {
                         Text(label.text).foregroundStyle(label.color)
                     }
                 }
-                .font(sub ? .caption2 : .caption)
+                .font(sizes.detail.font(10))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
@@ -224,8 +227,7 @@ struct TaskRow: View {
 
             if subtaskCount > 0, let onToggleSubtasks {
                 Button(action: onToggleSubtasks) {
-                    DisclosureLabel(count: subtaskCount, collapsed: subtasksCollapsed)
-                        .font(.caption)
+                    DisclosureLabel(count: subtaskCount, collapsed: subtasksCollapsed, size: sizes.detail)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 4)
                         .contentShape(Rectangle())
@@ -240,7 +242,7 @@ struct TaskRow: View {
                 .fill(color.opacity(sub ? 0.5 : 1))
                 .frame(width: 4)
         }
-        .modifier(RowChrome())
+        .modifier(RowChrome(paddingScale: sub ? 0.5 : 1))
     }
 
     static func dueLabel(_ due: Date) -> (text: String, color: Color) {
@@ -270,6 +272,7 @@ struct SectionHeader: View {
     var mode: String? = nil
     var titleHelp = ""
     var onTitleTap: (() -> Void)? = nil
+    @Environment(\.textSizes) private var sizes
 
     var body: some View {
         HStack(spacing: 6) {
@@ -292,14 +295,14 @@ struct SectionHeader: View {
     private var titleLabel: some View {
         HStack(spacing: 6) {
             Text(title.uppercased())
-                .font(.caption.weight(.semibold))
+                .font(sizes.heading.font(12, weight: .semibold))
             if count > 0 {
                 Text("\(count)")
-                    .font(.caption2)
+                    .font(sizes.heading.font(12))
             }
             if let mode {
                 Text("· \(mode)")
-                    .font(.caption2)
+                    .font(sizes.heading.font(12))
             }
         }
         .foregroundStyle(.secondary)
@@ -346,6 +349,7 @@ struct GroupHeader: View {
     /// Shown next to the arrow while collapsed.
     var hiddenCount = 0
     var onToggle: (() -> Void)? = nil
+    @Environment(\.textSizes) private var sizes
 
     var body: some View {
         HStack(spacing: 6) {
@@ -373,10 +377,11 @@ struct GroupHeader: View {
                     .frame(width: 7, height: 7)
             }
             Text(title)
-                .font(.caption.weight(.medium))
+                .font(sizes.heading.font(12, weight: .medium))
                 .lineLimit(1)
             if let isCollapsed {
-                DisclosureLabel(count: isCollapsed ? hiddenCount : nil, collapsed: isCollapsed)
+                DisclosureLabel(count: isCollapsed ? hiddenCount : nil, collapsed: isCollapsed,
+                                size: sizes.heading, base: 12)
             }
         }
         .foregroundStyle(.secondary)
@@ -387,14 +392,17 @@ struct GroupHeader: View {
 struct DisclosureLabel: View {
     let count: Int?
     let collapsed: Bool
+    var size = TextSize.medium
+    /// Point size of the text it sits next to at Medium; the arrow is a bit smaller.
+    var base: CGFloat = 10
 
     var body: some View {
         HStack(spacing: 3) {
             if let count, count > 0 {
-                Text("\(count)").font(.caption2)
+                Text("\(count)").font(size.font(base))
             }
             Image(systemName: collapsed ? "chevron.right" : "chevron.down")
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: size.points(base * 0.8), weight: .bold))
         }
     }
 }
@@ -408,17 +416,20 @@ struct RowButtonStyle: ButtonStyle {
 /// Shared row padding and hover highlight.
 struct RowChrome: ViewModifier {
     let pressed: Bool
+    /// Fraction of the spacing setting's row padding to use; subtask rows use less.
+    let paddingScale: CGFloat
     @Environment(\.rowDensity) private var density
     @ViewState private var hovering = false
 
-    init(pressed: Bool = false) {
+    init(pressed: Bool = false, paddingScale: CGFloat = 1) {
         self.pressed = pressed
+        self.paddingScale = paddingScale
     }
 
     func body(content: Content) -> some View {
         content
             .lineSpacing(density.lineSpacing)
-            .padding(.vertical, density.rowPadding)
+            .padding(.vertical, density.rowPadding * paddingScale)
             .padding(.horizontal, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(

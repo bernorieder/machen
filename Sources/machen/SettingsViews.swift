@@ -132,6 +132,18 @@ struct SettingsView: View {
                                 .tag(choice.symbol)
                         }
                     }
+                    Picker("Headings", selection: $store.headingTextSize) {
+                        ForEach(TextSize.allCases) { Text($0.label).tag($0) }
+                    }
+                    .help("EVENTS and TASKS, day headings and list names")
+                    Picker("Item names", selection: $store.nameTextSize) {
+                        ForEach(TextSize.allCases) { Text($0.label).tag($0) }
+                    }
+                    .help("Event and task titles")
+                    Picker("Item details", selection: $store.detailTextSize) {
+                        ForEach(TextSize.allCases) { Text($0.label).tag($0) }
+                    }
+                    .help("Times, places, notes, due dates, and subtasks")
                     Picker("Spacing", selection: $store.density) {
                         ForEach(RowDensity.allCases) { Text($0.label).tag($0) }
                     }

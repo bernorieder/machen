@@ -30,14 +30,15 @@
 
   "sectionHeading": {
     "_about": "EVENTS and TASKS",
-    "verticalPadding": 4,
+    "topPadding": 7,
+    "bottomPadding": 2,
     "horizontalPadding": 6,
     "extraSpaceAboveTasks": 10
   },
 
   "groupHeading": {
     "_about": "Day headings and list names",
-    "topPadding": 6,
+    "topPadding": 7,
     "bottomPadding": 4,
     "horizontalPadding": 6,
     "dotSize": 7,

@@ -30,7 +30,7 @@ enum Layout {
         static let dotGap: CGFloat = 6.0
         static let dotSize: CGFloat = 7.0
         static let horizontalPadding: CGFloat = 6.0
-        static let topPadding: CGFloat = 6.0
+        static let topPadding: CGFloat = 7.0
     }
     enum List {
         static let inset: CGFloat = 8.0
@@ -54,9 +54,10 @@ enum Layout {
         static let subtaskTopShare: CGFloat = 0.5
     }
     enum SectionHeading {
+        static let bottomPadding: CGFloat = 2.0
         static let extraSpaceAboveTasks: CGFloat = 10.0
         static let horizontalPadding: CGFloat = 6.0
-        static let verticalPadding: CGFloat = 4.0
+        static let topPadding: CGFloat = 7.0
     }
     enum Spacing {
         enum LineGap {

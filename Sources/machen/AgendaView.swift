@@ -293,7 +293,8 @@ struct SectionHeader: View {
                 .help(addHelp)
         }
         .padding(.horizontal, Layout.SectionHeading.horizontalPadding)
-        .padding(.vertical, Layout.SectionHeading.verticalPadding)
+        .padding(.top, Layout.SectionHeading.topPadding)
+        .padding(.bottom, Layout.SectionHeading.bottomPadding)
     }
 
     private var titleLabel: some View {

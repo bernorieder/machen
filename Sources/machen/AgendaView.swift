@@ -6,8 +6,6 @@ struct AgendaView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     if let message = store.errorMessage {
@@ -70,18 +68,6 @@ struct AgendaView: View {
             Divider()
             footer
         }
-    }
-
-    private var header: some View {
-        // Same grey as the section headings below, one size up.
-        HStack {
-            Text("machen")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
     }
 
     private var footer: some View {

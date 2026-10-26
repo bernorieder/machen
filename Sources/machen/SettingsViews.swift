@@ -80,6 +80,14 @@ struct SettingsView: View {
     @ViewState private var launchError: String?
     let onClose: () -> Void
 
+    /// "Version 1.0 (1)" from the app bundle; "Development build" when run without one (`swift run`).
+    static var versionText: String {
+        let info = Bundle.main.infoDictionary
+        guard let version = info?["CFBundleShortVersionString"] as? String else { return "Development build" }
+        let build = info?["CFBundleVersion"] as? String
+        return build.map { "Version \(version) (\($0))" } ?? "Version \(version)"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -94,6 +102,20 @@ struct SettingsView: View {
             .padding(.vertical, 10)
             Divider()
             Form {
+                Section {
+                    HStack(spacing: 10) {
+                        Image(nsImage: NSApp.applicationIconImage)
+                            .resizable()
+                            .frame(width: 32, height: 32)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("machen").font(.headline)
+                            Text(Self.versionText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
                 Section("Display") {
                     Stepper(value: $store.eventDays, in: Store.eventDayRange) {
                         LabeledContent("Days of events", value: store.eventDays == 1 ? "1 day" : "\(store.eventDays) days")

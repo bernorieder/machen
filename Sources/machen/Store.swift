@@ -44,6 +44,21 @@ final class Store: ObservableObject {
     /// Today; events cover `eventDays` days from here. Rolls over at midnight.
     @Published private(set) var day = Date().startOfDay
     static let eventDayRange = 1...14
+    /// Values the Events heading steps through when clicked.
+    static let eventDayCycle = [1, 2, 3, 7]
+
+    /// The next value in `eventDayCycle`; a custom count from Settings moves to the next larger step.
+    var nextEventDays: Int {
+        Self.eventDayCycle.first { $0 > eventDays } ?? Self.eventDayCycle[0]
+    }
+
+    static func eventDaysLabel(_ days: Int) -> String {
+        switch days {
+        case 1: "Today"
+        case 7: "Week"
+        default: "\(days) days"
+        }
+    }
     @Published var eventDays: Int {
         didSet {
             UserDefaults.standard.set(eventDays, forKey: "eventDays")

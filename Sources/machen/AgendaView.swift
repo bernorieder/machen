@@ -15,9 +15,11 @@ struct AgendaView: View {
                             .padding(.bottom, 6)
                     }
 
-                    SectionHeader(title: "Events", count: store.shownEventCount, addHelp: "New event") {
-                        if let draft = store.newEventDraft() { route = .event(draft) }
-                    }
+                    SectionHeader(title: "Events", count: store.shownEventCount, addHelp: "New event",
+                                  onAdd: { if let draft = store.newEventDraft() { route = .event(draft) } },
+                                  mode: Store.eventDaysLabel(store.eventDays),
+                                  titleHelp: "Click to show: \(Store.eventDaysLabel(store.nextEventDays))",
+                                  onTitleTap: { store.eventDays = store.nextEventDays })
                     ForEach(store.eventsByDay) { group in
                         // A single day needs no day heading; the header already names it.
                         if store.eventDays > 1 {
@@ -67,28 +69,35 @@ struct AgendaView: View {
     }
 
     private var header: some View {
+        // Same style as the section headings below.
         HStack {
-            Text("machen").font(.headline.weight(.regular))
+            Text("machen")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
             Spacer()
-            if store.isLoading {
-                ProgressView().controlSize(.small)
-            } else {
-                Button { Task { await store.refresh() } } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless)
-                    .help("Refresh")
-            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
     }
 
     private var footer: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 6) {
+            Group {
+                if store.isLoading {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Button { Task { await store.refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                        .buttonStyle(.borderless)
+                        .help("Refresh")
+                }
+            }
+            .frame(width: 14)
             if let lastSync = store.lastSync {
                 Text("Synced \(lastSync.formatted(date: .omitted, time: .shortened))")
             }
             Spacer()
             Button { route = .settings } label: { Image(systemName: "gearshape") }
+                .padding(.trailing, 6)
                 .buttonStyle(.borderless)
                 .help("Settings")
             Button { NSApp.terminate(nil) } label: { Image(systemName: "power") }

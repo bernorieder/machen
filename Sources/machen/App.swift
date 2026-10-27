@@ -28,6 +28,7 @@ enum Route: Equatable {
     case agenda
     case event(EventDraft)
     case task(TaskDraft)
+    case newTaskList(accountID: String)
     case settings
 }
 
@@ -51,6 +52,9 @@ struct RootView: View {
                 case .task(let draft):
                     TaskEditor(draft: draft, onClose: { route = .agenda }, onOpen: { route = .task($0) })
                         .id(draft.editorID)
+                case .newTaskList(let accountID):
+                    TaskListEditor(accountID: accountID, onClose: { route = .agenda },
+                                   onCreated: { route = .task(TaskDraft(listID: $0.id, day: store.day)) })
                 case .settings:
                     SettingsView { route = .agenda }
                 }

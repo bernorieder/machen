@@ -17,7 +17,7 @@ Website: [machen.polsys.net](https://machen.polsys.net)
 
 - **Events:** shows the events of your Google calendars for today, or for up to two weeks ahead. Click the EVENTS heading to switch between today, 2 days, 3 days and a week.
 - **Tasks:** shows your open tasks from Google Tasks, grouped by list and sorted by due date. Overdue tasks are marked in red, and subtasks appear under their task. You can fold a list or a task's subtasks away.
-- **Editing:** add, edit and delete events and tasks, including subtasks. You can move an event to another calendar. For repeating events, you choose whether a change applies to one event or to all of them.
+- **Editing:** add, edit and delete events and tasks, including subtasks, and create task lists. You can move an event to another calendar. For repeating events, you choose whether a change applies to one event or to all of them.
 - **Completing tasks:** click the circle next to a task to mark it as done. For a few seconds afterwards you can undo it.
 - **Several accounts:** connect more than one Google account, for example a personal and a work account. Their events and tasks appear together in one list.
 - **Video calls:** events with a Google Meet, Zoom, Teams, Webex or similar link get a **Join** button, in the list and in their notification.

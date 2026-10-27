@@ -214,6 +214,7 @@ final class Store: ObservableObject {
     /// Bumped by every local change, so a fetch that started before it can't overwrite it.
     private var eventsVersion = 0
     private var tasksVersion = 0
+    private var taskListsVersion = 0
     private var pendingDaysLoad: Task<Void, Never>?
     /// The cache as last written, without its sync time, to skip rewriting it when only that changed.
     private var lastCacheContent: Cache?
@@ -435,6 +436,14 @@ final class Store: ObservableObject {
         return (lists.first(where: isShown) ?? lists.first).map { TaskDraft(listID: $0.id, day: day) }
     }
 
+    /// Accounts a task list can be created in.
+    var taskListAccounts: [AccountState] { accounts.states.filter(\.isActive) }
+
+    /// The account of the list new tasks go in, for a new list unless another is chosen.
+    var defaultTaskListAccountID: String? {
+        newTaskDraft().flatMap { taskList($0.listID)?.accountID } ?? taskListAccounts.first?.id
+    }
+
     // MARK: Sync
 
     /// Days of events refreshed every minute: what's shown, but at least `Sync.minimumDaysLoaded`.
@@ -611,7 +620,10 @@ final class Store: ObservableObject {
     }
 
     private func loadTaskLists() async -> [Error?] {
+        let version = taskListsVersion
         let outcome = await eachAccount { try await $0.fetchTaskLists() }
+        // Outdated if a list was created meanwhile
+        guard version == taskListsVersion else { return outcome.results }
         let merged = accounts.all.flatMap { account in
             outcome.values[account.id] ?? fetchedTaskLists.filter { $0.accountID == account.id }
         }
@@ -810,6 +822,23 @@ final class Store: ObservableObject {
         tasksVersion += 1
         try await account(list.accountID).save(d, in: list)
         Task { await refreshTasks() }
+    }
+
+    /// Creates a task list. Returns once its account has it, so its first task can be added right away.
+    func createTaskList(titled title: String, in accountID: String) async throws -> TaskListInfo {
+        taskListsVersion += 1
+        let list = try await account(accountID).createTaskList(titled: title)
+        // Unless chosen, colours follow Google's order of lists, which the new list changes. So
+        // every list keeps the colour it has, and the new one gets the least used.
+        let used = Dictionary(grouping: fetchedTaskLists.map(colorHex(for:)), by: { $0 }).mapValues(\.count)
+        for other in fetchedTaskLists where listColors[other.id] == nil {
+            listColors[other.id] = colorHex(for: other)
+        }
+        listColors[list.id] = ListPalette.colors.min { used[$0.hex, default: 0] < used[$1.hex, default: 0] }?.hex
+        let index = fetchedTaskLists.lastIndex { $0.accountID == accountID }.map { $0 + 1 } ?? fetchedTaskLists.endIndex
+        fetchedTaskLists.insert(list, at: index)
+        saveCache()
+        return list
     }
 
     /// Completing a parent also completes its open subtasks, as the Google Tasks apps do.

@@ -19,7 +19,9 @@ struct AgendaView: View {
 
                     SectionHeader(title: "Events", count: Set(days.flatMap { $0.events.map(\.id) }).count,
                                   addHelp: "New event", addDisabled: store.newEventDraft() == nil,
-                                  onAdd: { if let draft = store.newEventDraft() { route = .event(draft) } },
+                                  adds: [AddAction(title: "New Event") {
+                                      if let draft = store.newEventDraft() { route = .event(draft) }
+                                  }],
                                   mode: Store.eventDaysLabel(store.eventDays),
                                   titleHelp: "Click to show: \(Store.eventDaysLabel(store.nextEventDays))",
                                   onTitleTap: { store.eventDays = store.nextEventDays })
@@ -46,8 +48,12 @@ struct AgendaView: View {
                         .padding(.top, Layout.SectionHeading.spaceAboveDivider)
                         .padding(.horizontal, Layout.SectionHeading.horizontalPadding)
                     SectionHeader(title: "Tasks", count: groups.reduce(0) { $0 + $1.tasks.count },
-                                  addHelp: "New task", addDisabled: store.newTaskDraft() == nil,
-                                  onAdd: { if let draft = store.newTaskDraft() { route = .task(draft) } },
+                                  addHelp: "New task or list", addDisabled: store.newTaskDraft() == nil,
+                                  adds: [AddAction(title: "New Task") {
+                                      if let draft = store.newTaskDraft() { route = .task(draft) }
+                                  }, AddAction(title: "New List…") {
+                                      if let id = store.defaultTaskListAccountID { route = .newTaskList(accountID: id) }
+                                  }],
                                   mode: store.taskFilter.label,
                                   titleHelp: "Click to show: \(store.taskFilter.next.label)",
                                   onTitleTap: { store.taskFilter = store.taskFilter.next })
@@ -344,13 +350,48 @@ struct TaskRow: View {
 
 // MARK: - Small pieces
 
+/// Something a section's add button creates.
+struct AddAction: Identifiable {
+    /// As shown in the add button's menu, for example "New Event".
+    let title: String
+    let action: () -> Void
+
+    var id: String { title }
+}
+
+/// The menu of an add button that offers several things. From AppKit, because SwiftUI's `Menu`
+/// draws its button darker and further left than the other add buttons.
+private enum AddMenu {
+    static func show(_ adds: [AddAction]) {
+        let menu = NSMenu()
+        adds.forEach { menu.addItem(Item($0)) }
+        // At the pointer, which is on the button
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    private final class Item: NSMenuItem {
+        private let run: () -> Void
+
+        init(_ add: AddAction) {
+            run = add.action
+            super.init(title: add.title, action: #selector(choose), keyEquivalent: "")
+            target = self
+        }
+
+        required init(coder: NSCoder) { fatalError("Not used") }
+
+        @objc private func choose() { run() }
+    }
+}
+
 struct SectionHeader: View {
     let title: String
     let count: Int
     let addHelp: String
     /// The add button does nothing yet, for example before anything has loaded.
     var addDisabled = false
-    let onAdd: () -> Void
+    /// One is done right away; several are offered in a menu.
+    let adds: [AddAction]
     /// Shown after the title, for example "· Today".
     var mode: String? = nil
     var titleHelp = ""
@@ -368,11 +409,15 @@ struct SectionHeader: View {
                 titleLabel
             }
             Spacer()
-            Button(action: onAdd) { Image(systemName: "plus") }
-                .buttonStyle(.borderless)
-                .disabled(addDisabled)
-                .help(addDisabled ? "Available once machen has loaded your data" : addHelp)
-                .accessibilityLabel(addHelp)
+            Button {
+                if adds.count > 1 { AddMenu.show(adds) } else { adds.first?.action() }
+            } label: {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(.borderless)
+            .disabled(addDisabled)
+            .help(addDisabled ? "Available once machen has loaded your data" : addHelp)
+            .accessibilityLabel(addHelp)
         }
         .padding(.horizontal, Layout.SectionHeading.horizontalPadding)
         .padding(.top, Layout.SectionHeading.topPadding)

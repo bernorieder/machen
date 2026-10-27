@@ -46,7 +46,7 @@ machen asks only for what it uses:
 | --- | --- |
 | `…/auth/calendar.calendarlist.readonly` | Lists your calendars, with their names, colours and default reminders, and finds the account's address (its primary calendar's id) |
 | `…/auth/calendar.events` | Shows, adds, changes, moves and deletes events, also in calendars shared with you |
-| `…/auth/tasks` | Shows, adds, changes, completes and deletes tasks |
+| `…/auth/tasks` | Shows, adds, changes, completes and deletes tasks, and creates task lists |
 
 It doesn't ask for full calendar access (`…/auth/calendar`), which would also allow sharing, creating and deleting calendars. `calendar.events.owned` would be narrower still, but wouldn't allow editing events in calendars someone shared with you.
 

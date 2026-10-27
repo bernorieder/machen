@@ -436,6 +436,12 @@ final class GoogleAccount: Account {
         }
     }
 
+    func createTaskList(titled title: String) async throws -> TaskListInfo {
+        let data = try await api.send("POST", Endpoint.tasks("users", "@me", "lists"), body: ["title": title])
+        let list = try JSONDecoder().decode(GTaskList.self, from: data)
+        return TaskListInfo(accountID: id, remoteID: list.id, title: list.title)
+    }
+
     func setCompleted(_ completed: Bool, taskIDs: [String], in list: TaskListInfo) async throws {
         let body: [String: Any] = completed ? ["status": "completed"] : ["status": "needsAction", "completed": NSNull()]
         for id in taskIDs {

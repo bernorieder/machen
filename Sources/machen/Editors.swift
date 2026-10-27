@@ -216,6 +216,64 @@ struct EventEditor: View {
     }
 }
 
+/// A new task list. Lists without open tasks aren't shown, so saving goes on to its first task.
+struct TaskListEditor: View {
+    @EnvironmentObject private var store: Store
+    @ViewState private var title = ""
+    @ViewState private var accountID: String
+    @ViewState private var saving = false
+    @ViewState private var error: String?
+    let onClose: () -> Void
+    let onCreated: (TaskListInfo) -> Void
+
+    init(accountID: String, onClose: @escaping () -> Void, onCreated: @escaping (TaskListInfo) -> Void) {
+        _accountID = ViewState(wrappedValue: accountID)
+        self.onClose = onClose
+        self.onCreated = onCreated
+    }
+
+    private var trimmedTitle: String { title.trimmingCharacters(in: .whitespaces) }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            EditorHeader(title: "New List", canSave: !trimmedTitle.isEmpty, saving: saving,
+                         onCancel: onClose, onSave: save)
+            Divider()
+            Form {
+                Section {
+                    TextField("Name", text: $title, prompt: Text("List name"))
+                    if store.taskListAccounts.count > 1 {
+                        Picker("Account", selection: $accountID) {
+                            ForEach(store.taskListAccounts) { Text($0.name).tag($0.id) }
+                        }
+                    }
+                } footer: {
+                    Text("After saving, add the list's first task. machen shows lists that have open tasks.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let error {
+                    Text(error).foregroundStyle(.red).font(.caption)
+                }
+            }
+            .formStyle(.grouped)
+        }
+    }
+
+    private func save() {
+        saving = true
+        error = nil
+        Task {
+            do {
+                onCreated(try await store.createTaskList(titled: trimmedTitle, in: accountID))
+            } catch {
+                self.error = error.localizedDescription
+            }
+            saving = false
+        }
+    }
+}
+
 struct TaskEditor: View {
     @EnvironmentObject private var store: Store
     @ViewState private var draft: TaskDraft

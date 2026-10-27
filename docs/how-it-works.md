@@ -24,7 +24,7 @@ machen is a SwiftUI menu bar app (`MenuBarExtra` in window style) that talks dir
 
 ## Accounts
 
-- **One protocol:** the store works with `Account` (in `Accounts.swift`): load calendars, events, task lists and tasks, and save, complete and delete. `GoogleAccount` is the only kind so far; other kinds, such as calendars on the Mac, would be added beside it.
+- **One protocol:** the store works with `Account` (in `Accounts.swift`): load calendars, events, task lists and tasks, save, complete and delete, and create task lists. `GoogleAccount` is the only kind so far; other kinds, such as calendars on the Mac, would be added beside it.
 - **Ids:** an account's id is `google-` and 8 random hex digits. A calendar's or list's id in machen is the account id, a slash, and the id at Google (`CalendarInfo.id`, `TaskListInfo.id`), because the same calendar can belong to two accounts. Settings (shown calendars, order, list colours, folded lists) use these ids.
 - **Shared calendars:** a calendar that an earlier account has too, such as a shared or a holiday calendar, starts hidden in the later account, so its events don't appear twice.
 - **Address:** a Google account is named by its address, which is the id of its primary calendar. After sign-in machen reads that id from the calendar list (`users/me/calendarList/primary?fields=id`), so no extra permission is needed. Signing in to an account that's already connected renews its sign-in.

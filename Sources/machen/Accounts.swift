@@ -24,6 +24,7 @@ protocol Account: AnyObject {
     /// Deletes an event of `calendar`, or with `.allEvents` the series an occurrence belongs to.
     func deleteEvent(_ draft: EventDraft, in calendar: CalendarInfo, scope: EditScope) async throws
     func save(_ draft: TaskDraft, in list: TaskListInfo) async throws
+    func createTaskList(titled title: String) async throws -> TaskListInfo
     func setCompleted(_ completed: Bool, taskIDs: [String], in list: TaskListInfo) async throws
     func deleteTask(_ taskID: String, in list: TaskListInfo) async throws
 }

@@ -24,6 +24,9 @@ protocol Account: AnyObject {
     /// Deletes an event of `calendar`, or with `.allEvents` the series an occurrence belongs to.
     func deleteEvent(_ draft: EventDraft, in calendar: CalendarInfo, scope: EditScope) async throws
     func save(_ draft: TaskDraft, in list: TaskListInfo) async throws
+    /// Moves a task of `home` with its subtasks, given in their order, to `list` of this account.
+    /// Returns the task's id there.
+    func moveTask(_ taskID: String, subtaskIDs: [String], from home: TaskListInfo, to list: TaskListInfo) async throws -> String
     func createTaskList(titled title: String) async throws -> TaskListInfo
     func setCompleted(_ completed: Bool, taskIDs: [String], in list: TaskListInfo) async throws
     func deleteTask(_ taskID: String, in list: TaskListInfo) async throws
@@ -53,7 +56,7 @@ enum AccountError: LocalizedError {
         switch self {
         case .notConnected: "This account is no longer connected to machen."
         case .missing: "This calendar or task list is no longer available."
-        case .otherAccount: "An event can't be moved to a calendar of another account."
+        case .otherAccount: "Events and tasks can't be moved to another account."
         }
     }
 }

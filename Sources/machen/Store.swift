@@ -338,9 +338,12 @@ final class Store: ObservableObject {
         return byAccount(writableCalendars.filter { home == nil || $0.accountID == home }, account: \.accountID)
     }
 
-    /// Lists a new task can go in, by account.
-    var taskListChoices: [AccountGroup<TaskListInfo>] {
-        byAccount(taskLists.filter { isActive($0.accountID) }, account: \.accountID)
+    /// Lists a task can be saved in, by account: any for a new task, and for an existing one only
+    /// those of its own account (Google can't move tasks between accounts).
+    func taskListChoices(for d: TaskDraft) -> [AccountGroup<TaskListInfo>] {
+        let home = d.isNew ? nil : taskList(d.homeListID)?.accountID
+        let lists = taskLists.filter { isActive($0.accountID) && (home == nil || $0.accountID == home) }
+        return byAccount(lists, account: \.accountID)
     }
 
     private func byAccount<T: Identifiable>(_ items: [T], account: (T) -> String) -> [AccountGroup<T>] {
@@ -816,12 +819,32 @@ final class Store: ObservableObject {
         await scheduleReminders()
     }
 
-    /// Saves a new or edited task. Returns once its account has it; the list refreshes in the background.
-    func save(_ d: TaskDraft) async throws {
-        guard let list = taskList(d.listID) else { throw AccountError.missing }
+    /// Saves a new or edited task. A changed list moves the task with its open subtasks, within
+    /// its account. Returns once its account has it, with the task's id, which a move may change.
+    /// The tasks refresh in the background, or after a move before returning, so the task can be
+    /// completed or given a subtask in its new list right away.
+    @discardableResult
+    func save(_ d: TaskDraft) async throws -> String? {
+        guard let list = taskList(d.listID), let home = taskList(d.homeListID) else { throw AccountError.missing }
+        guard list.accountID == home.accountID else { throw AccountError.otherAccount }
         tasksVersion += 1
-        try await account(list.accountID).save(d, in: list)
-        Task { await refreshTasks() }
+        let account = try self.account(home.accountID)
+        try await account.save(d, in: home)
+        guard let taskID = d.taskID, d.isMoving else {
+            Task { await refreshTasks() }
+            return d.taskID
+        }
+        let subtaskIDs = tasks.filter { $0.listID == home.id && $0.parentID == taskID }
+            .sorted { $0.position < $1.position }.map(\.taskID)
+        do {
+            let movedID = try await account.moveTask(taskID, subtaskIDs: subtaskIDs, from: home, to: list)
+            await refreshTasks()
+            return movedID
+        } catch {
+            // Part of it may have moved
+            Task { await refreshTasks() }
+            throw error
+        }
     }
 
     /// Creates a task list. Returns once its account has it, so its first task can be added right away.
@@ -884,10 +907,10 @@ final class Store: ObservableObject {
 
     func deleteTask(_ d: TaskDraft) async throws {
         guard let id = d.taskID else { return }
-        guard let list = taskList(d.listID) else { throw AccountError.missing }
+        guard let list = taskList(d.homeListID) else { throw AccountError.missing }
         tasksVersion += 1
         try await account(list.accountID).deleteTask(id, in: list)
-        tasks.removeAll { $0.listID == d.listID && ($0.taskID == id || $0.parentID == id) }
+        tasks.removeAll { $0.listID == list.id && ($0.taskID == id || $0.parentID == id) }
         // Reload so any subtasks reflect what Google did with them
         Task { await refreshTasks() }
     }

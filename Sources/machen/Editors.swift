@@ -297,7 +297,7 @@ struct TaskEditor: View {
     }
 
     private var hasSubtasks: Bool {
-        draft.taskID.map { id in store.tasks.contains { $0.listID == draft.listID && $0.parentID == id } } ?? false
+        draft.taskID.map { id in store.tasks.contains { $0.listID == draft.homeListID && $0.parentID == id } } ?? false
     }
 
     private var parentTitle: String {
@@ -318,11 +318,15 @@ struct TaskEditor: View {
                         LabeledContent("Subtask of", value: parentTitle)
                     } else {
                         Picker("List", selection: $draft.listID) {
-                            AccountSections(groups: store.taskListChoices) { list in
+                            AccountSections(groups: store.taskListChoices(for: draft)) { list in
                                 Text(list.title).tag(list.id)
                             }
                         }
-                        .disabled(!draft.isNew)
+                        if draft.isMoving && hasSubtasks {
+                            Text("Its subtasks move with it.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 Section {
@@ -380,8 +384,8 @@ struct TaskEditor: View {
         error = nil
         Task {
             do {
-                if draft != original { try await store.save(draft) }
-                await store.complete(listID: draft.listID, taskID: taskID)
+                let savedID = draft != original ? try await store.save(draft) ?? taskID : taskID
+                await store.complete(listID: draft.listID, taskID: savedID)
                 onClose()
             } catch {
                 self.error = error.localizedDescription
@@ -393,14 +397,13 @@ struct TaskEditor: View {
     /// Saves pending edits to the parent first, so they aren't lost when the editor switches.
     private func addSubtask() {
         guard let taskID = draft.taskID else { return }
-        let subtask = TaskDraft(subtaskOf: taskID, listID: draft.listID)
-        guard draft != original else { return onOpen(subtask) }
+        guard draft != original else { return onOpen(TaskDraft(subtaskOf: taskID, listID: draft.listID)) }
         saving = true
         error = nil
         Task {
             do {
-                try await store.save(draft)
-                onOpen(subtask)
+                let savedID = try await store.save(draft) ?? taskID
+                onOpen(TaskDraft(subtaskOf: savedID, listID: draft.listID))
             } catch {
                 self.error = error.localizedDescription
             }

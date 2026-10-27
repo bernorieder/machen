@@ -265,8 +265,10 @@ struct EventDraft: Equatable {
 
 struct TaskDraft: Equatable {
     var taskID: String?
-    /// The `TaskListInfo.id` of its list.
+    /// The `TaskListInfo.id` of the list to save it in.
     var listID: String
+    /// Where an existing task lives now; differs from `listID` when it's being moved.
+    var originalListID: String?
     /// Set for subtasks; Google Tasks allows only one level of nesting.
     var parentID: String?
     var title = ""
@@ -276,6 +278,9 @@ struct TaskDraft: Equatable {
 
     var isNew: Bool { taskID == nil }
     var isSubtask: Bool { parentID != nil }
+    var isMoving: Bool { originalListID.map { $0 != listID } ?? false }
+    /// The list it's in until it's saved.
+    var homeListID: String { originalListID ?? listID }
     /// Distinguishes editors so SwiftUI doesn't reuse one draft's state for another.
     var editorID: String { taskID ?? "new/\(listID)/\(parentID ?? "")" }
 
@@ -293,6 +298,7 @@ struct TaskDraft: Equatable {
     init(_ t: TaskItem) {
         taskID = t.taskID
         listID = t.listID
+        originalListID = t.listID
         parentID = t.parentID
         title = t.title
         notes = t.notes

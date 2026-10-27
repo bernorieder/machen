@@ -436,6 +436,27 @@ final class GoogleAccount: Account {
         }
     }
 
+    /// Google doesn't say whether subtasks follow their task to another list. So they go first, on
+    /// their own, and are put back under the task once it has followed.
+    func moveTask(_ taskID: String, subtaskIDs: [String], from home: TaskListInfo, to list: TaskListInfo) async throws -> String {
+        var moved: [String] = []
+        for id in subtaskIDs {
+            moved.append(try await move(id, in: home, query: ["destinationTasklist": list.remoteID]))
+        }
+        let movedID = try await move(taskID, in: home, query: ["destinationTasklist": list.remoteID])
+        var previous: String?
+        for id in moved {
+            previous = try await move(id, in: list, query: ["parent": movedID, "previous": previous])
+        }
+        return movedID
+    }
+
+    /// Moves a task within its list or to another one, and returns its id afterwards.
+    private func move(_ taskID: String, in list: TaskListInfo, query: [String: String?]) async throws -> String {
+        let data = try await api.send("POST", Endpoint.tasks("lists", list.remoteID, "tasks", taskID, "move", query: query))
+        return try JSONDecoder().decode(GTask.self, from: data).id
+    }
+
     func createTaskList(titled title: String) async throws -> TaskListInfo {
         let data = try await api.send("POST", Endpoint.tasks("users", "@me", "lists"), body: ["title": title])
         let list = try JSONDecoder().decode(GTaskList.self, from: data)

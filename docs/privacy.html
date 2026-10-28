@@ -20,7 +20,7 @@
 
     <main>
       <h1>Privacy policy</h1>
-      <p class="small">Last updated 27 October 2026</p>
+      <p class="small">Last updated 28 October 2026</p>
 
       <p>machen is a free, open-source app for the Mac menu bar that shows your Google Calendar events and Google Tasks and lets you change them. It's made by Bernhard Rieder (<a href="mailto:berno.rieder@gmail.com">berno.rieder@gmail.com</a>). This policy explains what data machen accesses, what it does with it, and how you can remove it.</p>
 
@@ -67,17 +67,37 @@
         <li><strong>Notifications:</strong> upcoming reminders are scheduled with macOS so they appear on time. machen removes them when it quits.</li>
         <li><strong>Settings:</strong> your choices in machen, such as which calendars to show, are kept in the app's preferences on your Mac.</li>
       </ul>
-      <p>All communication with Google uses encrypted connections (HTTPS).</p>
+
+      <h2>How your data is protected</h2>
+      <ul>
+        <li><strong>No server in between:</strong> your data goes only between your Mac and Google. It never passes through or is stored on a server of the developer, so there's no central copy that could be lost or breached, and no one but you has access to it.</li>
+        <li><strong>Encrypted connections:</strong> machen connects to Google only over encrypted connections (HTTPS).</li>
+        <li><strong>Secure sign-in:</strong> you sign in on Google's own page in your browser, so machen never sees your Google password. The sign-in uses Google's flow for desktop apps, protected by PKCE and a random state value.</li>
+        <li><strong>Encrypted tokens:</strong> sign-in tokens are kept in the macOS Keychain, which stores them encrypted. Other apps can't read them without your permission.</li>
+        <li><strong>Restricted files:</strong> the offline copy is a file that only your macOS user account can read. With FileVault turned on, macOS also encrypts it on disk.</li>
+        <li><strong>Limited access:</strong> machen asks Google only for the permissions listed above. It can't share or delete calendars, or change who has access to them.</li>
+        <li><strong>Checked app:</strong> machen is signed with the developer's Apple Developer ID and notarized by Apple, so macOS checks that it hasn't been tampered with. Its source code is public on <a href="https://github.com/bernorieder/machen">GitHub</a>.</li>
+      </ul>
 
       <h2>Sharing</h2>
       <p>machen doesn't share or transfer your data to anyone. It sends data only to Google, and only to show and change your own calendars and tasks. machen contains no analytics, crash reporting, advertising or tracking.</p>
 
-      <h2>Removing your data</h2>
+      <h2>How long data is kept, and deleting it</h2>
+      <p>The developer doesn't store any Google user data, so there's nothing to keep or delete on any server. On your Mac, machen keeps data only as long as it needs it to work:</p>
+      <ul>
+        <li><strong>Sign-in tokens:</strong> until you remove the account in machen, which also revokes them at Google.</li>
+        <li><strong>Offline copy:</strong> only what machen loaded last: your calendars and task lists, your open tasks, and your events from today up to four weeks ahead. machen replaces it at launch and every 5 minutes while it runs, so events of past days, and tasks you've completed or deleted, drop out at the next refresh. Removing an account deletes its events and tasks from it, and removing the last account deletes the file.</li>
+        <li><strong>Notifications:</strong> reminders scheduled with macOS are deleted when machen quits, when you turn off event notifications, and when you remove the last account.</li>
+        <li><strong>Settings:</strong> until you change them. A removed account's settings are deleted with it.</li>
+      </ul>
+      <p>Changes and deletions you make in machen happen in your Google account, where Google's own privacy policy applies.</p>
+      <p>To delete all of machen's data:</p>
       <ul>
         <li><strong>Remove an account:</strong> in machen, open Settings → Sources and click Remove next to the account. This revokes machen's access to that Google account and deletes its sign-in and its data from your Mac. Removing the last account also deletes the offline copy.</li>
         <li><strong>Revoke access at Google:</strong> at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>
         <li><strong>Uninstall:</strong> remove your accounts as above, then move machen to the Trash. To remove its settings too, delete <code>~/Library/Preferences/io.github.bernorieder.machen.plist</code>.</li>
       </ul>
+      <p>For questions about deleting your data, write to <a href="mailto:berno.rieder@gmail.com">berno.rieder@gmail.com</a>. The developer has no copy of it, but will help you remove it from your Mac.</p>
 
       <h2>Limited Use</h2>
       <p>machen's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>

@@ -59,7 +59,7 @@ You need a Mac with Apple silicon (M1 or later) running macOS 14 (Sonoma) or lat
 
 To add another Google account, open **Settings → Sources** and click **Add Google Account**. If a calendar is shared with both accounts, machen shows it only once at first; you can switch on the second copy under **Calendars**.
 
-**About the "unverified app" warning:** Google hasn't reviewed machen yet, so it warns you while you sign in. To continue, click **Advanced**, then **Go to machen**. Until the review is done, Google also limits how many people can sign in to machen.
+**Google is still reviewing machen.** Until it is approved, signing in shows a warning that Google hasn't verified the app: click **Advanced**, then **Go to machen**, to continue. Meanwhile, Google also limits how many people can sign in to machen.
 
 To start machen whenever you log in, turn on **Settings → General → Launch at login**. When machen first wants to show a notification, macOS asks whether to allow it.
 

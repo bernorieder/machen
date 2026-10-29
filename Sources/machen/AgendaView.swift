@@ -213,37 +213,43 @@ struct EventRow: View {
     }
 }
 
-/// Opens an event's video call. Prominent from 10 minutes before the start until the end.
+/// Opens an event's video call. Greyed out until 5 minutes before the start, so it isn't clicked
+/// by mistake hours ahead, then prominent until the end. The editor and the notification can
+/// still join earlier.
 struct JoinButton: View {
     let url: URL
     let start: Date
     let end: Date
 
-    private var liveFrom: Date { start.addingTimeInterval(-10 * 60) }
+    private var liveFrom: Date { start.addingTimeInterval(-5 * 60) }
 
     var body: some View {
-        // Redraws only when it turns prominent and when the call ends
-        TimelineView(.explicit([liveFrom, end])) { context in
+        // Redraws only when it turns prominent and when the call ends. The schedule starts now,
+        // since a first draw may otherwise get the first date ahead instead of the current one.
+        let now = Date()
+        TimelineView(.explicit([now] + [liveFrom, end].filter { $0 > now })) { context in
             let live = context.date >= liveFrom && context.date < end
             Button("Join") { NSWorkspace.shared.open(url) }
                 .buttonStyle(JoinButtonStyle(live: live))
-                .help("Join the video call (\(url.host ?? url.absoluteString))")
+                .disabled(!live)
+                .help(live ? "Join the video call (\(url.host ?? url.absoluteString))"
+                           : "Available 5 minutes before the start")
         }
     }
 }
 
-/// A small capsule: accent-coloured while the call is on, subtle otherwise. Drawn by hand so it
-/// looks the same whether or not the popover is the active window.
+/// A small capsule: accent-coloured while the call is on, greyed out otherwise. Drawn by hand so
+/// it looks the same whether or not the popover is the active window.
 struct JoinButtonStyle: ButtonStyle {
     let live: Bool
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(live ? Color.white : Color.primary)
+            .foregroundStyle(live ? Color.white : Color.primary.opacity(0.3))
             .padding(.horizontal, 10)
             .padding(.vertical, 3)
-            .background(Capsule().fill(live ? Color.accentColor : Color.primary.opacity(0.08)))
+            .background(Capsule().fill(live ? Color.accentColor : Color.primary.opacity(0.05)))
             .opacity(configuration.isPressed ? 0.7 : 1)
             .contentShape(Capsule())
     }

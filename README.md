@@ -20,7 +20,7 @@ Website: [machen.polsys.net](https://machen.polsys.net)
 - **Editing:** add, edit and delete events and tasks, including subtasks, and create task lists. You can move an event to another calendar, and a task with its subtasks to another list. For repeating events, you choose whether a change applies to one event or to all of them.
 - **Completing tasks:** click the circle next to a task to mark it as done. For a few seconds afterwards you can undo it.
 - **Several accounts:** connect more than one Google account, for example a personal and a work account. Their events and tasks appear together in one list.
-- **Video calls:** events with a Google Meet, Zoom, Teams, Webex or similar link get a **Join** button, in the list and in their notification.
+- **Video calls:** events with a Google Meet, Zoom, Teams, Webex or similar link get a **Join** button, in the list and in their notification. In the list, it can be clicked from 5 minutes before the start.
 - **Notifications:** machen shows the reminders you've set in Google Calendar as Mac notifications.
 - **Offline:** it shows the last loaded events and tasks when you're offline, and keeps itself up to date in the background.
 - **Your choice:** pick which accounts, calendars and task lists to show and in what order, the colour of each task list, text sizes, spacing, the height of the panel, and the menu bar icon.

@@ -8,6 +8,7 @@
   --panel: #ffffff;
   --accent: #d7261e;
   --accent-text: #ffffff;
+  --ok: #1a7f37;
   color-scheme: light dark;
 }
 
@@ -20,6 +21,7 @@
     --panel: #242427;
     --accent: #f0544c;
     --accent-text: #1b1b1d;
+    --ok: #3fb950;
   }
 }
 
@@ -79,6 +81,67 @@ nav a:hover { color: var(--text); }
 .small { font-size: 14px; color: var(--muted); }
 .hero .small { margin-top: 12px; }
 
+.hero .brew { font-size: 15px; color: var(--muted); margin: 16px 0 0; }
+
+/* A command to copy, such as Homebrew's: one click selects all of it, and the script in
+   index.html adds a copy button. Inline under the download button, a full-width box (.block)
+   in the installation steps. */
+.command {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px 10px;
+  vertical-align: middle;
+  text-align: left;
+}
+.command:has(.copy) { padding-right: 3px; }
+.command code {
+  font-size: 14px;
+  min-width: 0;
+  color: var(--text);
+  user-select: all;
+  -webkit-user-select: all;
+}
+.command.block {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 14px;
+  margin: 12px 0 16px;
+}
+.command.block:has(.copy) { padding: 5px 6px 5px 14px; }
+
+.copy {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.copy:hover { background: var(--line); color: var(--text); }
+.copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.copy svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.copy .check, .copy.copied .clipboard { display: none; }
+.copy.copied .check { display: block; }
+.copy.copied { color: var(--ok); }
+
 .shots {
   display: flex;
   justify-content: center;
@@ -122,6 +185,8 @@ footer.site p { margin: 6px 0; }
   body { font-size: 16px; }
   .hero h1 { font-size: 30px; }
   .hero p.lead { font-size: 17px; }
+  .hero .command { margin-top: 4px; }
+  .command code { font-size: 12px; }
   .shots { flex-direction: column; align-items: center; }
   nav { gap: 12px; }
   table, thead, tbody, tr, th, td { display: block; }

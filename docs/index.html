@@ -25,6 +25,7 @@
         <h1>Your Google Calendar and Google Tasks in the Mac menu bar</h1>
         <p class="lead">machen is a small, free app for the Mac menu bar. It shows your upcoming events and open tasks from one or more Google accounts in one list, and lets you add and change them without opening a browser.</p>
         <a class="button" href="https://github.com/bernorieder/machen/releases/latest">Download machen</a>
+        <p class="brew">or with <a href="https://brew.sh">Homebrew</a>: <span class="command"><code>brew install bernorieder/machen/machen</code></span></p>
         <p class="small">Free and open source · macOS 14 or later · Mac with Apple silicon</p>
       </div>
 
@@ -83,8 +84,10 @@
           <li>Open machen. Its icon appears in the menu bar.</li>
           <li>Click the icon, then <strong>Sign in with Google</strong>, and allow access in your browser.</li>
         </ol>
-        <p>With Homebrew, instead of the first two steps: <code>brew install bernorieder/machen/machen</code></p>
+        <p>With <a href="https://brew.sh">Homebrew</a>, instead of the first two steps, run this in Terminal:</p>
+        <div class="command block"><code>brew install bernorieder/machen/machen</code></div>
         <p>To add another account, open <strong>Settings → Sources</strong> and click <strong>Add Google Account</strong>.</p>
+        <p>To update, download the new version and drag it into Applications, replacing the old one, or run <code>brew upgrade machen</code>. Your settings and sign-in are kept.</p>
       </section>
     </main>
 
@@ -94,5 +97,36 @@
       <p>machen isn't affiliated with Google. Google Calendar and Google Tasks are trademarks of Google LLC. The fist in the icon is <a href="https://fontawesome.com/icons/hand-fist?s=solid">hand-fist</a> from Font Awesome Free (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>).</p>
     </footer>
   </div>
+  <script>
+    // Adds a copy button to each command, which shows a check mark for a moment once it has copied.
+    // Without the script, a click on the command still selects all of it.
+    const icons = '<svg class="clipboard" viewBox="0 0 16 16"><path d="M5.5 3H4a1 1 0 0 0-1 1v9.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-1.5"/><rect x="5.5" y="1.75" width="5" height="2.5" rx="0.75"/></svg>'
+      + '<svg class="check" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3.2L13 4.8"/></svg>';
+    for (const command of document.querySelectorAll('.command')) {
+      const code = command.querySelector('code');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'copy';
+      button.title = 'Copy';
+      button.setAttribute('aria-label', 'Copy the command');
+      button.innerHTML = icons;
+      button.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(code.textContent);
+        } catch {
+          getSelection().selectAllChildren(code);
+          return;
+        }
+        button.classList.add('copied');
+        button.title = 'Copied';
+        clearTimeout(button.reset);
+        button.reset = setTimeout(() => {
+          button.classList.remove('copied');
+          button.title = 'Copy';
+        }, 1500);
+      });
+      command.append(button);
+    }
+  </script>
 </body>
 </html>

@@ -57,7 +57,11 @@ You need a Mac with Apple silicon (M1 or later) running macOS 14 (Sonoma) or lat
 3. Open machen from Applications. Its icon appears in the menu bar; it's a calendar until you pick another one.
 4. Click the icon, then **Sign in with Google**. Your browser opens: choose your account and allow access to your calendars and tasks. Then click the menu bar icon again.
 
-**With Homebrew:** instead of steps 1 and 2, run `brew install bernorieder/machen/machen`.
+With [Homebrew](https://brew.sh), instead of steps 1 and 2, run this in Terminal:
+
+```
+brew install bernorieder/machen/machen
+```
 
 To add another Google account, open **Settings → Sources** and click **Add Google Account**. If a calendar is shared with both accounts, machen shows it only once at first; you can switch on the second copy under **Calendars**.
 

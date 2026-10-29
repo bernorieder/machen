@@ -238,9 +238,8 @@ struct EventRow: View {
     }
 }
 
-/// Opens an event's video call. Greyed out until 5 minutes before the start, so it isn't clicked
-/// by mistake hours ahead, then prominent until the end. The editor and the notification can
-/// still join earlier.
+/// Opens an event's video call. Greyed out until 5 minutes before the start, then prominent until
+/// the end; it opens the call either way.
 struct JoinButton: View {
     let url: URL
     let start: Date
@@ -256,9 +255,7 @@ struct JoinButton: View {
             let live = context.date >= liveFrom && context.date < end
             Button("Join") { NSWorkspace.shared.open(url) }
                 .buttonStyle(JoinButtonStyle(live: live))
-                .disabled(!live)
-                .help(live ? "Join the video call (\(url.host ?? url.absoluteString))"
-                           : "Available 5 minutes before the start")
+                .help("Join the video call (\(url.host ?? url.absoluteString))")
         }
     }
 }

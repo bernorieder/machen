@@ -144,7 +144,7 @@ An event's call link is, in this order:
 2. its `hangoutLink`,
 3. the first link in its location or description whose host is one of: Google Meet, Zoom, Microsoft Teams, Webex, Whereby, GoToMeeting, Jitsi Meet, FaceTime.
 
-In the list, the **Join** button is greyed out until 5 minutes before the start, so it isn't clicked by mistake hours ahead, then blue until the end. The event's editor and its notification can join at any time.
+In the list, the **Join** button is greyed out until 5 minutes before the start, then blue until the end. It opens the call either way, and so do the event's editor and its notification.
 
 ## The panel
 

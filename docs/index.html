@@ -94,14 +94,16 @@
     <footer class="site">
       <p>machen is made by Bernhard Rieder as part of <a href="https://polsys.net">polsys.net</a>. Its source code is on <a href="https://github.com/bernorieder/machen">GitHub</a>, under the <a href="https://github.com/bernorieder/machen/blob/main/LICENSE">MIT License</a>. Contact: <a href="mailto:berno.rieder@gmail.com">berno.rieder@gmail.com</a></p>
       <p><a href="privacy.html">Privacy policy</a></p>
-      <p>machen isn't affiliated with Google. Google Calendar and Google Tasks are trademarks of Google LLC. The fist in the icon is <a href="https://fontawesome.com/icons/hand-fist?s=solid">hand-fist</a> from Font Awesome Free (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>).</p>
+      <p>machen isn't affiliated with Google. Google Calendar and Google Tasks are trademarks of Google LLC. The fist in the icon is <a href="https://fontawesome.com/icons/hand-fist?s=solid">hand-fist</a> from Font Awesome Free (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>), and the copy icons are from GitHub's <a href="https://primer.style/octicons/">Octicons</a> (<a href="https://github.com/primer/octicons/blob/main/LICENSE">MIT License</a>).</p>
     </footer>
   </div>
   <script>
     // Adds a copy button to each command, which shows a check mark for a moment once it has copied.
     // Without the script, a click on the command still selects all of it.
-    const icons = '<svg class="clipboard" viewBox="0 0 16 16"><path d="M5.5 3H4a1 1 0 0 0-1 1v9.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-1.5"/><rect x="5.5" y="1.75" width="5" height="2.5" rx="0.75"/></svg>'
-      + '<svg class="check" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3.2L13 4.8"/></svg>';
+    // The icons are copy-16 and check-16 from GitHub's Octicons, © GitHub Inc., MIT License:
+    // https://github.com/primer/octicons/blob/main/LICENSE
+    const icons = '<svg class="clipboard" viewBox="0 0 16 16"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>'
+      + '<svg class="check" viewBox="0 0 16 16"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>';
     for (const command of document.querySelectorAll('.command')) {
       const code = command.querySelector('code');
       const button = document.createElement('button');

@@ -194,9 +194,9 @@ struct TaskItem: Identifiable, Hashable, Codable {
 
 // MARK: - Editable drafts
 
-struct EventDraft: Equatable {
+struct EventDraft: Equatable, Codable {
     /// The editable values, as they were when an existing event was opened.
-    struct Values: Equatable {
+    struct Values: Equatable, Codable {
         var title: String
         var isAllDay: Bool
         var start: Date
@@ -206,6 +206,9 @@ struct EventDraft: Equatable {
     }
 
     var eventID: String?
+    /// The id a new event gets at Google. machen chooses it, so sending the event again after an
+    /// answer got lost can't create it twice. Lowercase hex, which Google allows.
+    var newEventID = UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
     /// The `CalendarInfo.id` to save it in.
     var calendarID: String
     /// Where an existing event lives now; differs from `calendarID` when it's being moved.
@@ -263,7 +266,7 @@ struct EventDraft: Equatable {
     }
 }
 
-struct TaskDraft: Equatable {
+struct TaskDraft: Equatable, Codable {
     var taskID: String?
     /// The `TaskListInfo.id` of the list to save it in.
     var listID: String
@@ -308,7 +311,7 @@ struct TaskDraft: Equatable {
 }
 
 /// Which events an edit to an occurrence of a recurring event applies to.
-enum EditScope: String, CaseIterable, Identifiable {
+enum EditScope: String, CaseIterable, Identifiable, Codable {
     case thisEvent, allEvents
 
     var id: String { rawValue }

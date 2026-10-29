@@ -112,6 +112,10 @@ The spacing, size and font values of the main list live in `Support/layout.json`
 
 `Support/make-layout.swift` turns the file into Swift constants (`Layout.Bar.width` and so on) on every build. A typo, a missing value or a value that isn't a number stops the build and names the key or line.
 
+### Tests
+
+`Support/run-tests.sh` checks offline editing: it builds `Support/Tests` with the app's sources and `-D TESTING`, which replaces the Google accounts with a fake one whose connection the tests cut and restore, and keeps the Keychain and the cache out of it. It covers edits made offline, sending them in order with the ids the fake gives, a connection breaking off while sending, refused and temporarily failing changes, and keeping events across days.
+
 ### Screenshots
 
 `Support/make-screenshots.sh` renders the images in `docs/screenshots` from the app's real views, filled with sample data, so no personal calendar data ends up in the repository. It builds a separate tool with `-D SCREENSHOTS`, which has its own bundle ID and settings, never reads the keychain, and cleans up after itself.

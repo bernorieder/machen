@@ -12,7 +12,8 @@ machen is a SwiftUI menu bar app (`MenuBarExtra` in window style) that talks dir
 | `AgendaView.swift` | The main list: section and group headings, event and task rows, Join button, Undo banner |
 | `Editors.swift` | Event and task editors, including "This event / All events" and Add Subtask |
 | `SettingsViews.swift` | Sign-in screen and the three Settings pages |
-| `Store.swift` | All synced data of all accounts, the sync schedule, sending edits to the right account, the offline cache, scheduling reminders |
+| `Store.swift` | All synced data of all accounts, the sync schedule, going offline and back, queueing and sending edits to the right account, the offline cache, scheduling reminders |
+| `Outbox.swift` | Edits waiting for Google (`PendingChange`): how each shows in the list before Google has it, and the ids Google gives to tasks and lists created offline |
 | `Accounts.swift` | The `Account` protocol the store works with, and the list of connected accounts, kept in the Keychain |
 | `GoogleAccount.swift` | A Google account: its tokens, Google's API types, loading calendars, events, lists and tasks, and edits |
 | `Models.swift` | Calendars, events, lists and tasks as machen shows them, edit drafts, ordering rules, meeting-link detection, series shifting |
@@ -88,7 +89,26 @@ Google's default quota is 1 million Calendar requests a day for all users of a G
 
 ## Offline cache
 
-The last loaded calendars, task lists, tasks and events of all accounts, and the 4-week reminder window, are stored in `~/Library/Application Support/io.github.bernorieder.machen/cache.json`, readable only by the user (`0600`). machen shows them right away at launch, then refreshes. The cached events are only reused on the same day. The file is only rewritten when its contents change, not for every refresh. Removing the last account deletes it.
+The last loaded calendars, task lists, tasks and events of all accounts, and the 4-week reminder window, are stored in `~/Library/Application Support/io.github.bernorieder.machen/cache.json`, readable only by the user (`0600`). machen shows them right away at launch, then refreshes. On a later day, the events that aren't over yet are kept, so the list and reminders keep going offline for up to four weeks. The file is only rewritten when its contents change, not for every refresh. Removing the last account deletes it.
+
+## Offline
+
+- **Noticing it:** machen watches the network (`NWPathMonitor`) and counts as offline when there's no connection, or when every account's last request failed for lack of one (for example on a network without internet). The footer then says "Offline" instead of showing an error. Requests time out after 30 seconds.
+- **Coming back:** when the network returns, machen waits 2 seconds, refreshes everything and sends the edits that waited. Otherwise it keeps trying every minute.
+
+## Edits
+
+Every edit becomes a `PendingChange`. It shows in the list at once, goes into a queue saved in `outbox.json` next to the cache (`0600`, there only while changes wait), and is sent to Google in order.
+
+- **Online,** the editor waits for Google's answer, as before, so a refusal shows in the editor and the list goes back to Google's version.
+- **Offline,** or when the connection breaks off, the change stays queued and the editor closes. Items with a waiting change get a small sync icon, and the footer counts the changes.
+- **While changes wait,** every load lays them over what Google sent, so nothing flickers back. A refresh that started before a change was made or sent is thrown away, as for any edit.
+- **New tasks and lists** get a local id (`local-…`) until Google gives them one. Changes made to them meanwhile, such as a subtask under a new task, are sent with the new id. An open editor still holding the old id is mapped to the new one.
+- **New events** get their id from machen (lowercase hex, which Google allows), so sending one again after a lost answer can't create it twice: Google answers that it exists, which counts as done.
+- **Conflicts:** an event edit sends only the fields that changed, so changes made elsewhere to other fields stay. Otherwise machen's change wins. Deleting or completing something that's gone already counts as done.
+- **Refused changes** (Google answers with an error other than a temporary one) are dropped, with the changes that needed what they would have created, such as a subtask of a refused task. machen reports them until the message is dismissed.
+- **Temporary errors** (no connection, 429, 5xx) keep the change queued. An account that needs to be signed in again keeps its changes until it is; removing an account drops them.
+- **Undo** of a completion that hasn't been sent takes it out of the queue instead of sending both.
 
 ## Notifications
 

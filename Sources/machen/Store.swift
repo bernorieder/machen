@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Network
 import SwiftUI
 
 struct EventDay: Identifiable {
@@ -53,8 +54,12 @@ struct CompletedTasks: Identifiable, Equatable {
     let id = UUID()
     let accountID: String
     let listID: String
-    let taskIDs: [String]
+    let tasks: [TaskItem]
     let title: String
+    /// The queued change that completed them, taken back instead while it waits to be sent.
+    let change: UUID
+
+    var taskIDs: [String] { tasks.map(\.taskID) }
 }
 
 /// When machen syncs. Each events request costs one Google request per shown calendar;
@@ -75,6 +80,8 @@ enum Sync {
     static let reminderWindowDays = 28
     /// After waking from sleep, wait this long for the network before refreshing.
     static let wakeDelay: TimeInterval = 5
+    /// When the network comes back, wait this long for the connection to settle before syncing.
+    static let reconnectDelay: TimeInterval = 2
     /// After the number of days changes, wait this long before loading more, so several clicks
     /// on the Settings stepper load once.
     static let daysChangeDelay: TimeInterval = 0.4
@@ -125,6 +132,10 @@ final class Store: ObservableObject {
     @Published var errorMessage: String?
     /// Tasks just completed, offered for undo for a few seconds.
     @Published private(set) var recentlyCompleted: CompletedTasks?
+    /// Google can't be reached: the list shows what was loaded last, and edits wait in `outbox`.
+    @Published private(set) var isOffline = false
+    /// Edits not yet sent to Google, oldest first. Kept on disk until they're sent.
+    @Published private(set) var outbox: [PendingChange] = []
 
     /// Desktop notifications for events' Google Calendar reminders.
     @Published var notificationsEnabled: Bool {
@@ -202,6 +213,20 @@ final class Store: ObservableObject {
     private var timer: Timer?
     private var wakeObserver: NSObjectProtocol?
     private var accountsObserver: AnyCancellable?
+    private let pathMonitor = NWPathMonitor()
+    /// Whether macOS has a network connection (which doesn't mean Google can be reached).
+    private var networkUp = true
+    /// The error the last sync showed, which the next sync replaces. Other errors, such as a
+    /// change Google refused, stay until they're dismissed.
+    private var syncError: String?
+    /// Ids Google gave to tasks and lists created offline, and to tasks it moved.
+    private var idMap = IDMap()
+    /// The run sending queued changes, while one is under way.
+    private var sender: Task<Void, Never>?
+    /// The change being sent, which can't be taken back any more.
+    private var sendingID: UUID?
+    /// Edits waiting to hear whether Google took their change: nil, or why it refused.
+    private var waiters: [UUID: CheckedContinuation<Error?, Never>] = [:]
     /// The accounts as last handled, to tell which were added, removed, signed out or signed in again.
     private var knownAccounts: [AccountState]
     /// A refresh of everything was asked for while another refresh ran (for example for a newly
@@ -253,6 +278,12 @@ final class Store: ObservableObject {
                 await self?.refreshAfterWake()
             }
         }
+        // Going offline shows at once, and machen catches up as soon as the connection is back
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let up = path.status == .satisfied
+            Task { @MainActor in self?.networkChanged(up: up) }
+        }
+        pathMonitor.start(queue: .main)
         // Accounts being added, removed or signed out are handled here rather than in a view,
         // because the panel's views only exist once it has been opened.
         accountsObserver = accounts.$states.dropFirst().removeDuplicates().sink { [weak self] _ in
@@ -263,6 +294,7 @@ final class Store: ObservableObject {
         // Show what was loaded last time right away (and schedule its reminders, in case
         // machen starts offline), then refresh.
         loadCache()
+        loadOutbox()
         // Separate tasks: the first scheduling may wait for an answer to macOS's notification prompt
         Task { await scheduleReminders() }
         #if !SCREENSHOTS
@@ -474,12 +506,34 @@ final class Store: ObservableObject {
     }
 
     private func rollOverDay() {
-        let now = Date().startOfDay
-        guard now != day else { return }
-        day = now
-        events = []
-        loadedDays = 0
+        let today = Date().startOfDay
+        guard today != day else { return }
+        (events, loadedDays) = Self.carriedOver(events, loadedDays: loadedDays, from: day, to: today)
+        day = today
         eventsVersion += 1
+    }
+
+    /// Loaded events still useful on a later day: those not over by its start, with the days
+    /// loaded counted from it. So the list and reminders keep going while machen is offline.
+    static func carriedOver(_ events: [CalendarEvent], loadedDays: Int, from: Date, to: Date) -> ([CalendarEvent], Int) {
+        let elapsed = Calendar.current.dateComponents([.day], from: from, to: to).day ?? 0
+        guard elapsed >= 0, elapsed < loadedDays else { return ([], 0) }
+        return (events.filter { $0.end > to }, loadedDays - elapsed)
+    }
+
+    private func networkChanged(up: Bool) {
+        guard up != networkUp else { return }
+        networkUp = up
+        guard up else {
+            isOffline = true
+            return
+        }
+        // Catch up, and send what was changed meanwhile (see `finishSync`)
+        Task {
+            try? await Task.sleep(for: .seconds(Sync.reconnectDelay))
+            rollOverDay()
+            await refresh()
+        }
     }
 
     /// Opening the panel refreshes events and tasks (or everything, if that's due) while the
@@ -601,14 +655,23 @@ final class Store: ObservableObject {
     /// after the spinner stops, because macOS may wait for an answer to its notification prompt.
     private func finishSync(_ results: [Error?]) async {
         let errors = results.compactMap { $0 }.filter { !($0 is CancellationError) }
-        if errors.count < results.count { lastSync = Date() }
-        // An account that needs to be signed in again is mentioned until it is
+        if errors.count < results.count {
+            lastSync = Date()
+            if isOffline { isOffline = false }
+        } else if !errors.isEmpty, errors.allSatisfy(\.isConnectivity), !isOffline {
+            isOffline = true
+        }
+        // An account that needs to be signed in again is mentioned until it is. Being offline
+        // shows in the footer instead.
         let signedOut = accounts.states.first { !$0.isActive }
             .map { AccountFailure(account: $0.name, underlying: AuthError.sessionExpired) }
-        let message = (errors.first ?? signedOut)?.localizedDescription
-        if message != errorMessage { errorMessage = message }
+        let message = (errors.first { !$0.isConnectivity } ?? signedOut)?.localizedDescription
+        if errorMessage == nil || errorMessage == syncError, message != errorMessage { errorMessage = message }
+        syncError = message
         saveCache()
         await scheduleReminders()
+        // Edits made offline, or while this sync ran
+        if !isOffline { sendQueued() }
         if fullRefreshPending, loadCount == 0 { await refresh() }
     }
 
@@ -628,7 +691,8 @@ final class Store: ObservableObject {
         // Outdated if a list was created meanwhile
         guard version == taskListsVersion else { return outcome.results }
         let merged = accounts.all.flatMap { account in
-            outcome.values[account.id] ?? fetchedTaskLists.filter { $0.accountID == account.id }
+            outcome.values[account.id].map { withPending($0, of: account.id) }
+                ?? fetchedTaskLists.filter { $0.accountID == account.id }
         }
         if merged != fetchedTaskLists { fetchedTaskLists = merged }
         return outcome.results
@@ -649,7 +713,10 @@ final class Store: ObservableObject {
         let kept = events.filter { e in
             isActive(e.accountID) && (outcome.values[e.accountID] == nil || (keepsLater && e.start >= end))
         }
-        let merged = sortedEvents(kept + outcome.values.values.joined())
+        // Edits not sent yet are laid over what Google sent; what's kept has them already
+        let fresh = outcome.values.flatMap { withPending($0.value, of: $0.key) }
+        var seen = Set<String>()
+        let merged = sortedEvents((kept + fresh).filter { seen.insert($0.id).inserted })
         if merged != events { events = merged }
         loadedDays = replacing ? days : max(loadedDays, days)
         return outcome.results
@@ -657,13 +724,16 @@ final class Store: ObservableObject {
 
     private func loadTasks() async -> [Error?] {
         let version = tasksVersion
-        let shown = taskLists.filter(isShown)
+        // A list created offline isn't at Google yet
+        let shown = taskLists.filter { isShown($0) && !LocalID.isLocal($0.remoteID) }
         let outcome = await eachAccount { account in
             try await account.fetchTasks(in: shown.filter { $0.accountID == account.id })
         }
         guard version == tasksVersion else { return outcome.results }
         let kept = tasks.filter { isActive($0.accountID) && outcome.values[$0.accountID] == nil }
-        let merged = TaskItem.arranged(kept + outcome.values.values.joined())
+        let fresh = outcome.values.flatMap { withPending($0.value, of: $0.key) }
+        var seen = Set<String>()
+        let merged = TaskItem.arranged((kept + fresh).filter { seen.insert($0.id).inserted })
         if merged != tasks { tasks = merged }
         return outcome.results
     }
@@ -694,6 +764,11 @@ final class Store: ObservableObject {
         events.removeAll { !isActive($0.accountID) }
         tasks.removeAll { !isActive($0.accountID) }
         if let completed = recentlyCompleted, !isActive(completed.accountID) { recentlyCompleted = nil }
+        // A signed-out account's edits wait until it's signed in again; a removed one's go
+        if outbox.contains(where: { !ids.contains($0.accountID) }) {
+            outbox.removeAll { !ids.contains($0.accountID) }
+            saveOutbox()
+        }
         saveCache()
         Task { await scheduleReminders() }
         // A new account, or one signed in again, needs everything loaded
@@ -712,10 +787,14 @@ final class Store: ObservableObject {
         lastSync = nil
         lastFullSync = nil
         errorMessage = nil
+        syncError = nil
         recentlyCompleted = nil
+        outbox = []
+        idMap = IDMap()
         eventsVersion += 1
         tasksVersion += 1
         deleteCache()
+        saveOutbox()
         Task { await Notifier.shared?.removeAll() }
     }
 
@@ -782,75 +861,59 @@ final class Store: ObservableObject {
 
     // MARK: Edits
 
+    // Every edit becomes a `PendingChange`: shown in the list at once, kept on disk, and sent to
+    // Google in order. Online, the editor waits for Google's answer, so a refusal shows there.
+    // Offline, or when the connection drops, the change waits and is sent once machen is online.
+
     private func account(_ id: String) throws -> any Account {
         guard let account = accounts.account(id) else { throw AccountError.notConnected }
         return account
     }
 
-    /// Saves a new or edited event. Returns once its account has it; the list refreshes in the
-    /// background. For an occurrence of a repeating event, `.allEvents` edits the series. A
-    /// changed calendar moves the event, within its account.
+    /// Saves a new or edited event. For an occurrence of a repeating event, `.allEvents` edits the
+    /// series. A changed calendar moves the event, within its account.
     func save(_ d: EventDraft, scope: EditScope = .thisEvent) async throws {
         guard let target = calendar(d.calendarID), let home = calendar(d.originalCalendarID ?? d.calendarID) else {
             throw AccountError.missing
         }
         guard target.accountID == home.accountID else { throw AccountError.otherAccount }
-        eventsVersion += 1
         let editsSeries = scope == .allEvents && d.recurringEventID != nil && !d.isNew
-        try await account(home.accountID).save(d, in: target, home: home, scope: editsSeries ? .allEvents : .thisEvent)
-        // A series or an event beyond the near days needs the whole range reloaded
-        let near = !editsSeries && d.start < day.adding(days: daysToLoad)
-        Task {
-            if near { await refreshEvents() } else { await refreshAllEvents() }
+        // Refused here rather than once it's sent
+        if editsSeries, d.timesChanged, let original = d.original {
+            try SeriesShift.check(original: original, edited: d.values)
         }
+        try await perform(PendingChange(accountID: home.accountID,
+                                        kind: .saveEvent(d, scope: editsSeries ? .allEvents : .thisEvent)))
     }
 
     /// Deletes an event, or with `.allEvents` the whole series an occurrence belongs to.
     func deleteEvent(_ d: EventDraft, scope: EditScope = .thisEvent) async throws {
-        guard let id = d.eventID else { return }
+        guard d.eventID != nil else { return }
         guard let home = calendar(d.originalCalendarID ?? d.calendarID) else { throw AccountError.missing }
-        eventsVersion += 1
-        let series = scope == .allEvents ? d.recurringEventID : nil
-        try await account(home.accountID).deleteEvent(d, in: home, scope: scope)
-        events.removeAll { event in
-            event.calendarID == home.id && (event.eventID == id || (series != nil && event.recurringEventID == series))
-        }
-        saveCache()
-        await scheduleReminders()
+        try await perform(PendingChange(accountID: home.accountID, kind: .deleteEvent(d, scope: scope)))
     }
 
     /// Saves a new or edited task. A changed list moves the task with its open subtasks, within
-    /// its account. Returns once its account has it, with the task's id, which a move may change.
-    /// The tasks refresh in the background, or after a move before returning, so the task can be
-    /// completed or given a subtask in its new list right away.
+    /// its account. Returns the task's id: a local one until Google has a new task.
     @discardableResult
     func save(_ d: TaskDraft) async throws -> String? {
+        let d = d.resolved(idMap)
         guard let list = taskList(d.listID), let home = taskList(d.homeListID) else { throw AccountError.missing }
         guard list.accountID == home.accountID else { throw AccountError.otherAccount }
-        tasksVersion += 1
-        let account = try self.account(home.accountID)
-        try await account.save(d, in: home)
-        guard let taskID = d.taskID, d.isMoving else {
-            Task { await refreshTasks() }
-            return d.taskID
+        if let taskID = d.taskID {
+            let subtaskIDs = !d.isMoving ? [] : tasks.filter { $0.listID == home.id && $0.parentID == taskID }
+                .sorted { $0.position < $1.position }.map(\.taskID)
+            try await perform(PendingChange(accountID: home.accountID, kind: .updateTask(d, subtaskIDs: subtaskIDs)))
+            return idMap(taskID)
         }
-        let subtaskIDs = tasks.filter { $0.listID == home.id && $0.parentID == taskID }
-            .sorted { $0.position < $1.position }.map(\.taskID)
-        do {
-            let movedID = try await account.moveTask(taskID, subtaskIDs: subtaskIDs, from: home, to: list)
-            await refreshTasks()
-            return movedID
-        } catch {
-            // Part of it may have moved
-            Task { await refreshTasks() }
-            throw error
-        }
+        let localID = LocalID.make()
+        try await perform(PendingChange(accountID: list.accountID, kind: .createTask(d, localID: localID)))
+        return idMap(localID)
     }
 
-    /// Creates a task list. Returns once its account has it, so its first task can be added right away.
+    /// Creates a task list, so its first task can be added right away.
     func createTaskList(titled title: String, in accountID: String) async throws -> TaskListInfo {
-        taskListsVersion += 1
-        let list = try await account(accountID).createTaskList(titled: title)
+        let list = TaskListInfo(accountID: accountID, remoteID: LocalID.make(), title: title)
         // Unless chosen, colours follow Google's order of lists, which the new list changes. So
         // every list keeps the colour it has, and the new one gets the least used.
         let used = Dictionary(grouping: fetchedTaskLists.map(colorHex(for:)), by: { $0 }).mapValues(\.count)
@@ -858,28 +921,25 @@ final class Store: ObservableObject {
             listColors[other.id] = colorHex(for: other)
         }
         listColors[list.id] = ListPalette.colors.min { used[$0.hex, default: 0] < used[$1.hex, default: 0] }?.hex
-        let index = fetchedTaskLists.lastIndex { $0.accountID == accountID }.map { $0 + 1 } ?? fetchedTaskLists.endIndex
-        fetchedTaskLists.insert(list, at: index)
-        saveCache()
-        return list
+        try await perform(PendingChange(accountID: accountID, kind: .createTaskList(list)))
+        return list.resolved(idMap)
     }
 
     /// Completing a parent also completes its open subtasks, as the Google Tasks apps do.
     /// Afterwards the completion can be undone for a few seconds.
     func complete(listID: String, taskID: String) async {
+        let listID = idMap(listID), taskID = idMap(taskID)
         // Already completed, for example by a quick second click
         guard let task = tasks.first(where: { $0.listID == listID && $0.taskID == taskID }),
               let list = taskList(listID) else { return }
-        tasksVersion += 1
-        let ids = [taskID] + tasks.filter { $0.listID == listID && $0.parentID == taskID }.map(\.taskID)
-        tasks.removeAll { $0.listID == listID && ids.contains($0.taskID) }
+        let done = [task] + tasks.filter { $0.listID == listID && $0.parentID == taskID }
+        let change = PendingChange(accountID: list.accountID, kind: .setCompleted(true, tasks: done))
         do {
-            try await account(list.accountID).setCompleted(true, taskIDs: ids, in: list)
-            saveCache()
-            offerUndo(CompletedTasks(accountID: list.accountID, listID: listID, taskIDs: ids, title: task.title))
+            try await perform(change)
+            offerUndo(CompletedTasks(accountID: list.accountID, listID: listID, tasks: done, title: task.title,
+                                     change: change.id))
         } catch {
             report(error)
-            await refreshTasks()
         }
     }
 
@@ -895,24 +955,218 @@ final class Store: ObservableObject {
     func undoComplete() async {
         guard let completed = recentlyCompleted else { return }
         recentlyCompleted = nil
-        tasksVersion += 1
+        let reopen = PendingChange(accountID: completed.accountID,
+                                   kind: .setCompleted(false, tasks: completed.tasks.map { $0.resolved(idMap) }))
+        // Not sent yet: the completion is simply taken back
+        if completed.change != sendingID, outbox.contains(where: { $0.id == completed.change }) {
+            outbox.removeAll { $0.id == completed.change }
+            saveOutbox()
+            applyLocally(reopen)
+            return
+        }
         do {
-            guard let list = taskList(completed.listID) else { throw AccountError.missing }
-            try await account(list.accountID).setCompleted(false, taskIDs: completed.taskIDs, in: list)
+            try await perform(reopen)
         } catch {
             report(error)
         }
-        await refreshTasks()
     }
 
     func deleteTask(_ d: TaskDraft) async throws {
-        guard let id = d.taskID else { return }
+        let d = d.resolved(idMap)
+        guard d.taskID != nil else { return }
         guard let list = taskList(d.homeListID) else { throw AccountError.missing }
-        tasksVersion += 1
-        try await account(list.accountID).deleteTask(id, in: list)
-        tasks.removeAll { $0.listID == list.id && ($0.taskID == id || $0.parentID == id) }
-        // Reload so any subtasks reflect what Google did with them
-        Task { await refreshTasks() }
+        try await perform(PendingChange(accountID: list.accountID, kind: .deleteTask(d)))
+    }
+
+    /// Whether an edit of the event or task hasn't reached Google yet.
+    func isPending(_ event: CalendarEvent) -> Bool { outbox.contains { $0.concerns(event) } }
+    func isPending(_ task: TaskItem) -> Bool { outbox.contains { $0.resolved(idMap).concerns(task) } }
+
+    /// The id a task or list has now, for an editor opened before Google gave it its own.
+    func currentID(_ id: String) -> String { idMap(id) }
+
+    // MARK: Sending edits
+
+    /// Shows a change at once and queues it. Online, returns once Google has it, and throws if
+    /// Google refuses it. Offline, or when the connection drops, it returns with the change queued.
+    private func perform(_ change: PendingChange) async throws {
+        outbox.append(change)
+        saveOutbox()
+        applyLocally(change)
+        guard !isOffline else { return sendQueued() }
+        let refusal = await withCheckedContinuation { continuation in
+            waiters[change.id] = continuation
+            sendQueued()
+        }
+        if let refusal { throw refusal }
+    }
+
+    private func applyLocally(_ change: PendingChange) {
+        if change.changesEvents {
+            eventsVersion += 1
+            events = sortedEvents(change.apply(to: events, calendars: fetchedCalendars))
+            Task { await scheduleReminders() }
+        } else if change.changesTaskLists {
+            taskListsVersion += 1
+            fetchedTaskLists = change.apply(to: fetchedTaskLists)
+        } else {
+            tasksVersion += 1
+            tasks = TaskItem.arranged(change.apply(to: tasks))
+        }
+        saveCache()
+    }
+
+    /// Data just loaded for an account, with that account's queued changes laid over it.
+    private func withPending(_ events: [CalendarEvent], of accountID: String) -> [CalendarEvent] {
+        outbox.filter { $0.accountID == accountID && $0.changesEvents }
+            .reduce(events) { $1.resolved(idMap).apply(to: $0, calendars: fetchedCalendars) }
+    }
+
+    private func withPending(_ tasks: [TaskItem], of accountID: String) -> [TaskItem] {
+        outbox.filter { $0.accountID == accountID && !$0.changesEvents && !$0.changesTaskLists }
+            .reduce(tasks) { $1.resolved(idMap).apply(to: $0) }
+    }
+
+    private func withPending(_ lists: [TaskListInfo], of accountID: String) -> [TaskListInfo] {
+        outbox.filter { $0.accountID == accountID && $0.changesTaskLists }
+            .reduce(lists) { $1.resolved(idMap).apply(to: $0) }
+    }
+
+    /// Starts sending the queued changes, unless that's under way.
+    private func sendQueued() {
+        guard sender == nil, !outbox.isEmpty else { return }
+        sender = Task { await sendPending() }
+    }
+
+    /// Sends the queued changes oldest first, each with the ids Google gave meanwhile. Stops when
+    /// the connection is gone. An account's changes wait while it needs to be signed in again,
+    /// or while Google is busy.
+    private func sendPending() async {
+        var waiting: Set<String> = []
+        var nearEvents = false, allEvents = false, openTasks = false
+        sending: while let change = outbox.first(where: { !waiting.contains($0.accountID) }) {
+            guard isActive(change.accountID) else {
+                waiting.insert(change.accountID)
+                continue
+            }
+            sendingID = change.id
+            var refusal: Error?
+            do {
+                try await send(change.resolved(idMap))
+                if isOffline { isOffline = false }
+            } catch where error.isTemporary {
+                sendingID = nil
+                if error.isConnectivity {
+                    isOffline = true
+                    break sending
+                }
+                waiting.insert(change.accountID)
+                continue
+            } catch {
+                refusal = error
+            }
+            sendingID = nil
+            switch change.kind {
+            case .saveEvent(let d, let scope):
+                if scope == .allEvents || d.start >= day.adding(days: daysToLoad) { allEvents = true } else { nearEvents = true }
+            case .deleteEvent(_, let scope):
+                if scope == .allEvents { allEvents = true } else { nearEvents = true }
+            default:
+                openTasks = true
+            }
+            finish(change, refusal: refusal)
+        }
+        // Other edits waiting keep their change queued
+        for waiter in waiters.values { waiter.resume(returning: nil) }
+        waiters = [:]
+        sender = nil
+        // What Google made of the changes, and a refused change undone
+        guard nearEvents || allEvents || openTasks else { return }
+        Task {
+            if openTasks { await refreshTasks() }
+            if allEvents { await refreshAllEvents() } else if nearEvents { await refreshEvents() }
+        }
+    }
+
+    /// Sends one change to its account. Deleting or completing what's gone already counts as done.
+    private func send(_ change: PendingChange) async throws {
+        let account = try self.account(change.accountID)
+        switch change.kind {
+        case .saveEvent(let d, let scope):
+            guard let target = calendar(d.calendarID), let home = calendar(d.originalCalendarID ?? d.calendarID) else {
+                throw AccountError.missing
+            }
+            try await account.save(d, in: target, home: home, scope: scope)
+        case .deleteEvent(let d, let scope):
+            guard let home = calendar(d.originalCalendarID ?? d.calendarID) else { throw AccountError.missing }
+            do { try await account.deleteEvent(d, in: home, scope: scope) } catch where error.isGone {}
+        case .createTask(let d, let localID):
+            guard let list = taskList(d.listID) else { throw AccountError.missing }
+            adopt(try await account.save(d, in: list), for: localID)
+        case .updateTask(let d, let subtaskIDs):
+            guard let taskID = d.taskID, let list = taskList(d.listID), let home = taskList(d.homeListID) else {
+                throw AccountError.missing
+            }
+            _ = try await account.save(d, in: home)
+            if d.isMoving {
+                adopt(try await account.moveTask(taskID, subtaskIDs: subtaskIDs, from: home, to: list), for: taskID)
+            }
+        case .setCompleted(let done, let tasks):
+            guard let listID = tasks.first?.listID, let list = taskList(listID) else { throw AccountError.missing }
+            do {
+                try await account.setCompleted(done, taskIDs: tasks.map(\.taskID), in: list)
+            } catch where done && error.isGone {}
+        case .deleteTask(let d):
+            guard let taskID = d.taskID, let list = taskList(d.homeListID) else { throw AccountError.missing }
+            do { try await account.deleteTask(taskID, in: list) } catch where error.isGone {}
+        case .createTaskList(let local):
+            adopt(try await account.createTaskList(titled: local.title).remoteID, for: local.remoteID)
+        }
+    }
+
+    /// A change Google took or refused leaves the queue. Refused, it takes along the changes that
+    /// needed what it would have created, and is reported unless an editor is waiting for it.
+    private func finish(_ change: PendingChange, refusal: Error?) {
+        var finished = [change]
+        if refusal != nil, let localID = change.createdLocalID {
+            finished += outbox.filter { $0.depends(on: localID) }
+        }
+        let ids = Set(finished.map(\.id))
+        outbox.removeAll { ids.contains($0.id) }
+        saveOutbox()
+        // Loads that started before Google had it are outdated
+        if finished.contains(where: \.changesEvents) { eventsVersion += 1 }
+        if finished.contains(where: \.changesTaskLists) { taskListsVersion += 1 }
+        if finished.contains(where: { !$0.changesEvents && !$0.changesTaskLists }) { tasksVersion += 1 }
+        for done in finished {
+            if let waiter = waiters.removeValue(forKey: done.id) {
+                waiter.resume(returning: refusal)
+            } else if let refusal, done.id == change.id {
+                report(ChangeRefused(subject: change.subject, underlying: refusal))
+            }
+        }
+    }
+
+    /// Google gave a task or list a new id (one created offline, or a moved task): everything
+    /// that knows the old one follows, including the list's settings.
+    private func adopt(_ newID: String, for oldID: String) {
+        guard newID != oldID else { return }
+        idMap.record(newID, for: oldID)
+        tasks = TaskItem.arranged(tasks.map { $0.resolved(idMap) })
+        fetchedTaskLists = fetchedTaskLists.map { $0.resolved(idMap) }
+        func renamed(_ key: String) -> String { key.replacingOccurrences(of: oldID, with: newID) }
+        if listColors.keys.contains(where: { $0.contains(oldID) }) {
+            listColors = Dictionary(listColors.map { (renamed($0.key), $0.value) }, uniquingKeysWith: { a, _ in a })
+        }
+        if visibility.keys.contains(where: { $0.contains(oldID) }) {
+            visibility = Dictionary(visibility.map { (renamed($0.key), $0.value) }, uniquingKeysWith: { a, _ in a })
+        }
+        if collapsed.contains(where: { $0.contains(oldID) }) { collapsed = Set(collapsed.map(renamed)) }
+        if customOrder.values.joined().contains(where: { $0.contains(oldID) }) {
+            customOrder = customOrder.mapValues { $0.map(renamed) }
+        }
+        saveOutbox()
+        saveCache()
     }
 
     private func report(_ error: Error) {
@@ -927,7 +1181,7 @@ final class Store: ObservableObject {
         var calendars: [CalendarInfo]
         var taskLists: [TaskListInfo]
         var tasks: [TaskItem]
-        /// Events from `eventsFrom` for `loadedDays` days; only reused on the same day.
+        /// Events from `eventsFrom` for `loadedDays` days; on a later day, those not over yet.
         var events: [CalendarEvent]
         var eventsFrom: Date
         var loadedDays: Int
@@ -940,9 +1194,10 @@ final class Store: ObservableObject {
         }
     }
 
-    /// ~/Library/Application Support/<bundle id>/cache.json; none for the screenshot tool or `swift run`.
+    /// ~/Library/Application Support/<bundle id>/cache.json; none for the screenshot and test
+    /// tools or `swift run`.
     private static let cacheURL: URL? = {
-        #if SCREENSHOTS
+        #if SCREENSHOTS || TESTING
         return nil
         #else
         guard let bundleID = Bundle.main.bundleIdentifier,
@@ -960,10 +1215,8 @@ final class Store: ObservableObject {
         fetchedCalendars = cache.calendars.filter { ids.contains($0.accountID) }
         fetchedTaskLists = cache.taskLists.filter { ids.contains($0.accountID) }
         tasks = cache.tasks.filter { isActive($0.accountID) }
-        if cache.eventsFrom == day {
-            events = cache.events.filter { isActive($0.accountID) }
-            loadedDays = cache.loadedDays
-        }
+        (events, loadedDays) = Self.carriedOver(cache.events.filter { isActive($0.accountID) },
+                                                loadedDays: cache.loadedDays, from: cache.eventsFrom, to: day)
         lastSync = cache.lastSync
         lastCacheContent = cache.withoutSyncTime
     }
@@ -985,6 +1238,36 @@ final class Store: ObservableObject {
         lastCacheContent = nil
         guard let url = Self.cacheURL else { return }
         try? FileManager.default.removeItem(at: url)
+    }
+
+    /// Edits not sent yet, and the ids Google gave meanwhile, which changes after them may need.
+    private struct Outbox: Codable {
+        var changes: [PendingChange]
+        var ids: IDMap
+    }
+
+    /// outbox.json next to the cache; there only while edits wait to be sent.
+    private static let outboxURL = cacheURL?.deletingLastPathComponent().appendingPathComponent("outbox.json")
+
+    private func loadOutbox() {
+        guard let url = Self.outboxURL, let data = try? Data(contentsOf: url),
+              let saved = try? JSONDecoder().decode(Outbox.self, from: data) else { return }
+        let ids = Set(accounts.all.map(\.id))
+        outbox = saved.changes.filter { ids.contains($0.accountID) }
+        idMap = saved.ids
+    }
+
+    /// Written for every change, so no edit is lost when machen quits.
+    private func saveOutbox() {
+        guard let url = Self.outboxURL else { return }
+        guard !outbox.isEmpty else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(Outbox(changes: outbox, ids: idMap)) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // Readable only by you, like the cache
+        FileManager.default.createFile(atPath: url.path, contents: data, attributes: [.posixPermissions: 0o600])
     }
 }
 

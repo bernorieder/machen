@@ -34,11 +34,13 @@ struct AgendaView: View {
                             }
                         }
                         if group.events.isEmpty {
-                            EmptyRow(text: store.isLoaded(group.day) ? "No events" : "Loading…")
+                            EmptyRow(text: store.isLoaded(group.day) ? "No events"
+                                     : store.isOffline ? "Not available offline" : "Loading…")
                         }
                         ForEach(group.events) { event in
                             EventRow(event: event,
-                                     startsHere: store.multiDayMode == .todayAndStart && group.isStartDay(of: event)) {
+                                     startsHere: store.multiDayMode == .todayAndStart && group.isStartDay(of: event),
+                                     isPending: store.isPending(event)) {
                                 open(event)
                             }
                         }
@@ -58,7 +60,7 @@ struct AgendaView: View {
                                   titleHelp: "Click to show: \(store.taskFilter.next.label)",
                                   onTitleTap: { store.taskFilter = store.taskFilter.next })
                     if groups.isEmpty {
-                        EmptyRow(text: store.lastSync == nil ? "Loading…"
+                        EmptyRow(text: store.lastSync == nil ? (store.isOffline ? "Not available offline" : "Loading…")
                                  : store.taskFilter == .dueOnly ? "No open tasks with a due date" : "No open tasks")
                     }
                     ForEach(groups) { group in
@@ -105,8 +107,14 @@ struct AgendaView: View {
                 }
             }
             .frame(width: 14)
-            if let lastSync = store.lastSync {
-                Text("Synced \(Self.syncedText(lastSync))")
+            if let status = syncStatus {
+                HStack(spacing: 4) {
+                    if store.isOffline { Image(systemName: "wifi.slash") }
+                    Text(status).lineLimit(1)
+                }
+                .help(store.isOffline
+                      ? "machen can't reach Google. It shows what it loaded last, and sends your changes once it's online again."
+                      : "")
             }
             Spacer()
             Button { route = .settings } label: { Image(systemName: "gearshape") }
@@ -123,6 +131,18 @@ struct AgendaView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, Layout.Footer.horizontalPadding)
         .padding(.vertical, Layout.Footer.verticalPadding)
+    }
+
+    /// "Synced 14:32", or "Offline · synced 14:32", with the number of edits not sent yet.
+    private var syncStatus: String? {
+        let count = store.outbox.count
+        let waiting = count == 0 ? nil : count == 1 ? "1 change to sync" : "\(count) changes to sync"
+        if store.isOffline {
+            return (["Offline"] + [waiting ?? store.lastSync.map { "synced " + Self.syncedText($0) }].compactMap { $0 })
+                .joined(separator: " · ")
+        }
+        let parts = [store.lastSync.map { "Synced " + Self.syncedText($0) }, waiting].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     /// "14:32" today; with the date when the shown data is older, for example when offline.
@@ -157,16 +177,21 @@ struct EventRow: View {
     let event: CalendarEvent
     /// Marks the start-day appearance of a multi-day event that is shown only once.
     var startsHere = false
+    /// An edit of it hasn't reached Google yet.
+    var isPending = false
     let action: () -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 6) {
             Button(action: action) {
                 VStack(alignment: .leading, spacing: density.lineGap) {
-                    Text(event.displayTitle)
-                        .font(sizes.name.font(Layout.Text.itemName))
-                        .strikethrough(event.declined)
-                        .lineLimit(2)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(event.displayTitle)
+                            .font(sizes.name.font(Layout.Text.itemName))
+                            .strikethrough(event.declined)
+                            .lineLimit(2)
+                        if isPending { PendingMark() }
+                    }
                     Text(timeText)
                         .font(sizes.detail.font(Layout.Text.detail))
                         .foregroundStyle(.secondary)
@@ -293,10 +318,13 @@ struct TaskRow: View {
 
             Button(action: action) {
                 VStack(alignment: .leading, spacing: density.lineGap) {
-                    Text(title)
-                        .font(sub ? sizes.detail.font(Layout.Text.subtaskName) : sizes.name.font(Layout.Text.itemName))
-                        .strikethrough(checked)
-                        .lineLimit(2)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(title)
+                            .font(sub ? sizes.detail.font(Layout.Text.subtaskName) : sizes.name.font(Layout.Text.itemName))
+                            .strikethrough(checked)
+                            .lineLimit(2)
+                        if store.isPending(task) { PendingMark() }
+                    }
                     if !task.notes.isEmpty {
                         Text(task.notes)
                             .foregroundStyle(.secondary)
@@ -444,6 +472,17 @@ struct SectionHeader: View {
             }
         }
         .foregroundStyle(.secondary)
+    }
+}
+
+/// Marks an event or task whose edit hasn't reached Google yet.
+struct PendingMark: View {
+    var body: some View {
+        Image(systemName: "arrow.triangle.2.circlepath")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .help("Not synced with Google yet")
+            .accessibilityLabel("Not synced yet")
     }
 }
 

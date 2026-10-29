@@ -396,7 +396,12 @@ final class GoogleAccount: Account {
                                                              query: ["destination": calendar.remoteID]))
             }
         } else {
-            try await api.send("POST", Endpoint.calendar("calendars", calendar.remoteID, "events"), body: body)
+            body["id"] = d.newEventID
+            do {
+                try await api.send("POST", Endpoint.calendar("calendars", calendar.remoteID, "events"), body: body)
+            } catch let error as APIError where error.status == 409 {
+                // Created by an earlier attempt whose answer got lost
+            }
         }
     }
 
@@ -421,19 +426,21 @@ final class GoogleAccount: Account {
 
     // MARK: Task edits
 
-    func save(_ d: TaskDraft, in list: TaskListInfo) async throws {
+    func save(_ d: TaskDraft, in list: TaskListInfo) async throws -> String {
         var body: [String: Any] = ["title": d.title, "notes": d.notes]
         if d.hasDue {
             body["due"] = GDate.taskDueString(d.due)
         } else if !d.isNew {
             body["due"] = NSNull()
         }
+        let data: Data
         if let id = d.taskID {
-            try await api.send("PATCH", Endpoint.tasks("lists", list.remoteID, "tasks", id), body: body)
+            data = try await api.send("PATCH", Endpoint.tasks("lists", list.remoteID, "tasks", id), body: body)
         } else {
-            try await api.send("POST", Endpoint.tasks("lists", list.remoteID, "tasks", query: ["parent": d.parentID]),
-                               body: body)
+            data = try await api.send("POST", Endpoint.tasks("lists", list.remoteID, "tasks", query: ["parent": d.parentID]),
+                                      body: body)
         }
+        return try JSONDecoder().decode(GTask.self, from: data).id
     }
 
     /// Google doesn't say whether subtasks follow their task to another list. So they go first, on

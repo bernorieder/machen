@@ -72,7 +72,12 @@ enum Endpoint {
 final class GoogleAPI {
     /// The account's access token; asked for a fresh one (`true`) after Google rejects a request.
     private let token: (_ forceRefresh: Bool) async throws -> String
-    private let session = URLSession(configuration: .ephemeral)
+    private let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        // A connection that hangs counts as offline sooner than after the default minute
+        configuration.timeoutIntervalForRequest = 30
+        return URLSession(configuration: configuration)
+    }()
 
     init(token: @escaping (_ forceRefresh: Bool) async throws -> String) {
         self.token = token

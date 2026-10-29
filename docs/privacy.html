@@ -20,7 +20,7 @@
 
     <main>
       <h1>Privacy policy</h1>
-      <p class="small">Last updated 28 October 2026</p>
+      <p class="small">Last updated 29 October 2026</p>
 
       <p>machen is a free, open-source app for the Mac menu bar that shows your Google Calendar events and Google Tasks and lets you change them. It's made by Bernhard Rieder (<a href="mailto:berno.rieder@gmail.com">berno.rieder@gmail.com</a>). This policy explains what data machen accesses, what it does with it, and how you can remove it.</p>
 
@@ -64,6 +64,7 @@
       <ul>
         <li><strong>Sign-in:</strong> the sign-in tokens Google issues for each connected account are kept in the macOS Keychain.</li>
         <li><strong>Offline copy:</strong> the calendars, events and tasks machen loaded last are kept in a file in your user folder (<code>~/Library/Application Support/io.github.bernorieder.machen/</code>) that only your user account can read, so machen can show them right away and while you're offline.</li>
+        <li><strong>Changes waiting to be sent:</strong> changes you make while offline are kept in a file next to the offline copy, which only your user account can read, until machen has sent them to Google.</li>
         <li><strong>Notifications:</strong> upcoming reminders are scheduled with macOS so they appear on time. machen removes them when it quits.</li>
         <li><strong>Settings:</strong> your choices in machen, such as which calendars to show, are kept in the app's preferences on your Mac.</li>
       </ul>
@@ -74,7 +75,7 @@
         <li><strong>Encrypted connections:</strong> machen connects to Google only over encrypted connections (HTTPS).</li>
         <li><strong>Secure sign-in:</strong> you sign in on Google's own page in your browser, so machen never sees your Google password. The sign-in uses Google's flow for desktop apps, protected by PKCE and a random state value.</li>
         <li><strong>Encrypted tokens:</strong> sign-in tokens are kept in the macOS Keychain, which stores them encrypted. Other apps can't read them without your permission.</li>
-        <li><strong>Restricted files:</strong> the offline copy is a file that only your macOS user account can read. With FileVault turned on, macOS also encrypts it on disk.</li>
+        <li><strong>Restricted files:</strong> the offline copy and the changes waiting to be sent are files that only your macOS user account can read. With FileVault turned on, macOS also encrypts them on disk.</li>
         <li><strong>Limited access:</strong> machen asks Google only for the permissions listed above. It can't share or delete calendars, or change who has access to them.</li>
         <li><strong>Checked app:</strong> machen is signed with the developer's Apple Developer ID and notarized by Apple, so macOS checks that it hasn't been tampered with. Its source code is public on <a href="https://github.com/bernorieder/machen">GitHub</a>.</li>
       </ul>
@@ -87,6 +88,7 @@
       <ul>
         <li><strong>Sign-in tokens:</strong> until you remove the account in machen, which also revokes them at Google.</li>
         <li><strong>Offline copy:</strong> only what machen loaded last: your calendars and task lists, your open tasks, and your events from today up to four weeks ahead. machen replaces it at launch and every 5 minutes while it runs, so events of past days, and tasks you've completed or deleted, drop out at the next refresh. Removing an account deletes its events and tasks from it, and removing the last account deletes the file.</li>
+        <li><strong>Changes waiting to be sent:</strong> until Google has them, which machen tries as soon as it's online. A change Google refuses is deleted too, and machen tells you. Removing an account deletes its waiting changes.</li>
         <li><strong>Notifications:</strong> reminders scheduled with macOS are deleted when machen quits, when you turn off event notifications, and when you remove the last account.</li>
         <li><strong>Settings:</strong> until you change them. A removed account's settings are deleted with it.</li>
       </ul>

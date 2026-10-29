@@ -23,7 +23,8 @@ protocol Account: AnyObject {
     func save(_ draft: EventDraft, in calendar: CalendarInfo, home: CalendarInfo, scope: EditScope) async throws
     /// Deletes an event of `calendar`, or with `.allEvents` the series an occurrence belongs to.
     func deleteEvent(_ draft: EventDraft, in calendar: CalendarInfo, scope: EditScope) async throws
-    func save(_ draft: TaskDraft, in list: TaskListInfo) async throws
+    /// Saves a new or edited task in `list`, and returns its id.
+    func save(_ draft: TaskDraft, in list: TaskListInfo) async throws -> String
     /// Moves a task of `home` with its subtasks, given in their order, to `list` of this account.
     /// Returns the task's id there.
     func moveTask(_ taskID: String, subtaskIDs: [String], from home: TaskListInfo, to list: TaskListInfo) async throws -> String
@@ -77,6 +78,12 @@ final class Accounts: ObservableObject {
     /// signed out or signed in again.
     @Published private(set) var states: [AccountState] = []
     private var google: [GoogleAccount] = []
+    #if TESTING
+    /// Accounts of the test tool, in place of Google ones.
+    var testing: [any Account] = [] {
+        didSet { publish() }
+    }
+    #endif
     /// Set when this launch turned machen 1.x's single sign-in into an account, so the store can
     /// move that version's settings over to it.
     private(set) var legacyAccountID: String?
@@ -94,7 +101,7 @@ final class Accounts: ObservableObject {
 
     init() {
         googleAuth = GoogleAuth()
-        #if !SCREENSHOTS
+        #if !SCREENSHOTS && !TESTING
         // The screenshot tool isn't signed as machen, so reading the keychain would prompt.
         google = loadGoogleAccounts()
         #endif
@@ -102,11 +109,17 @@ final class Accounts: ObservableObject {
         publish()
     }
 
-    var all: [any Account] { google }
-    var active: [any Account] { google.filter(\.isActive) }
+    var all: [any Account] {
+        #if TESTING
+        return testing
+        #else
+        return google
+        #endif
+    }
+    var active: [any Account] { all.filter(\.isActive) }
     var hasActiveAccount: Bool { states.contains(where: \.isActive) }
 
-    func account(_ id: String) -> (any Account)? { google.first { $0.id == id } }
+    func account(_ id: String) -> (any Account)? { all.first { $0.id == id } }
     func state(_ id: String) -> AccountState? { states.first { $0.id == id } }
 
     /// Signs in to a Google account in the browser and connects it. For an account that's
@@ -150,7 +163,7 @@ final class Accounts: ObservableObject {
     }
 
     private func publish() {
-        let new = google.map { AccountState(id: $0.id, name: $0.name, isActive: $0.isActive) }
+        let new = all.map { AccountState(id: $0.id, name: $0.name, isActive: $0.isActive) }
         if new != states { states = new }
     }
 
@@ -164,7 +177,7 @@ final class Accounts: ObservableObject {
 
     /// Updates the one Keychain item in place, which never asks for permission (see `Keychain.set`).
     private func save() {
-        #if !SCREENSHOTS
+        #if !SCREENSHOTS && !TESTING
         let stored = google.map { Stored(id: $0.id, email: $0.email, tokens: $0.tokens) }
         if let data = try? JSONEncoder().encode(stored) { Keychain.set(data, for: Self.keychainItem) }
         #endif

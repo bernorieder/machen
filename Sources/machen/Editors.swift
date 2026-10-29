@@ -297,11 +297,15 @@ struct TaskEditor: View {
     }
 
     private var hasSubtasks: Bool {
-        draft.taskID.map { id in store.tasks.contains { $0.listID == draft.homeListID && $0.parentID == id } } ?? false
+        draft.taskID.map { id in
+            store.tasks.contains { $0.listID == store.currentID(draft.homeListID) && $0.parentID == store.currentID(id) }
+        } ?? false
     }
 
     private var parentTitle: String {
-        let parent = store.tasks.first { $0.listID == draft.listID && $0.taskID == draft.parentID }
+        let parent = store.tasks.first {
+            $0.listID == store.currentID(draft.listID) && $0.taskID == draft.parentID.map(store.currentID)
+        }
         return parent.map { $0.title.isEmpty ? "(No title)" : $0.title } ?? "Another task"
     }
 

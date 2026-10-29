@@ -28,7 +28,9 @@ Google doesn't treat a desktop client secret as confidential, since it ships ins
 
 - **Testing:** only the test users you listed can sign in, and Google ends their sign-in after 7 days. Each Google account connected to machen must be on the list, including second accounts.
 - **In production, unverified:** go to **Audience → Publish app**. Anyone can sign in, up to 100 users, and they see an "unverified app" warning once (**Advanced → Go to machen**).
-- **Verified:** to remove the warning and the user limit, apply for verification on the same page. Google asks for a home page, a privacy policy, and a short video showing the sign-in. The events and tasks permissions are "sensitive", which needs this review but not the paid security assessment; the calendar list permission isn't sensitive.
+- **Verified:** to remove the warning and the user limit, apply for verification on the same page. Google asks for a home page, a privacy policy that says how data is protected, kept and deleted, and a video showing the sign-in and every feature that uses a sensitive permission, with each change visible in the Google account. The events and tasks permissions are "sensitive", which needs this review but not the paid security assessment; the calendar list permission isn't sensitive.
+
+machen's own Google project, whose client release builds have built in, was verified in October 2026. Adding a permission, or changing the consent screen configuration, needs a new verification.
 
 ### Website
 

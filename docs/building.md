@@ -89,6 +89,21 @@ For each release:
    gh release create v1.1 build/machen-1.1.dmg --title "machen 1.1" --notes "…"
    ```
 
+4. Run `Support/update-cask.sh`. It sets the Homebrew cask's version and checksum to the release just published, taking the checksum GitHub reports for the disk image, then commits and pushes the tap. It stops if the release isn't on GitHub yet.
+
+### Homebrew
+
+machen's Homebrew tap is the repository [bernorieder/homebrew-machen](https://github.com/bernorieder/homebrew-machen), with the cask in `Casks/machen.rb`. People install machen with `brew install bernorieder/machen/machen`. `Support/update-cask.sh` expects a checkout of the tap next to this repository (`../homebrew-machen`); set `TAP_DIR` for another place.
+
+To check the cask after changing it by hand, in the tap's checkout:
+
+```bash
+brew style Casks/machen.rb
+brew audit --cask --strict --online bernorieder/machen/machen
+```
+
+machen isn't in Homebrew's main cask collection, which only takes apps with a certain following on GitHub.
+
 ## Tools
 
 ### Layout values

@@ -57,11 +57,13 @@ You need a Mac with Apple silicon (M1 or later) running macOS 14 (Sonoma) or lat
 3. Open machen from Applications. Its icon appears in the menu bar; it's a calendar until you pick another one.
 4. Click the icon, then **Sign in with Google**. Your browser opens: choose your account and allow access to your calendars and tasks. Then click the menu bar icon again.
 
+**With Homebrew:** instead of steps 1 and 2, run `brew install bernorieder/machen/machen`.
+
 To add another Google account, open **Settings → Sources** and click **Add Google Account**. If a calendar is shared with both accounts, machen shows it only once at first; you can switch on the second copy under **Calendars**.
 
 To start machen whenever you log in, turn on **Settings → General → Launch at login**. When machen first wants to show a notification, macOS asks whether to allow it.
 
-**Updating:** download the new version and drag it into Applications, replacing the old one. Your settings and sign-in are kept.
+**Updating:** download the new version and drag it into Applications, replacing the old one. With Homebrew, run `brew upgrade machen`, then open machen again: Homebrew quits it to replace it. Your settings and sign-in are kept.
 
 ## Privacy
 
@@ -75,9 +77,9 @@ The full [privacy policy](https://machen.polsys.net/privacy.html) has the detail
 ## Uninstalling
 
 1. In machen, open **Settings → Sources** and click **Remove** next to each account. This removes your sign-ins and the saved events and tasks.
-2. Quit machen and move it from Applications to the Trash.
+2. Quit machen and move it from Applications to the Trash. With Homebrew, run `brew uninstall machen` instead.
 
-If you want to remove its settings too, delete the file `~/Library/Preferences/io.github.bernorieder.machen.plist`.
+If you want to remove its settings too, delete the file `~/Library/Preferences/io.github.bernorieder.machen.plist`. With Homebrew, `brew uninstall --zap machen` removes the app and its settings together.
 
 ## Problems and ideas
 

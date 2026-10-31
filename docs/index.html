@@ -24,8 +24,10 @@
         <img class="icon" src="icon.png" alt="machen app icon: a red raised fist on a white tile">
         <h1>Your Google Calendar and Google Tasks in the Mac menu bar</h1>
         <p class="lead">machen is a small, free app for the Mac menu bar. It shows your upcoming events and open tasks from one or more Google accounts in one list, and lets you add and change them without opening a browser.</p>
-        <a class="button" href="https://github.com/bernorieder/machen/releases/latest">Download machen</a>
-        <p class="brew">or with <a href="https://brew.sh">Homebrew</a>: <span class="command"><code>brew install bernorieder/machen/machen</code></span></p>
+        <div class="get">
+          <a class="button" href="https://github.com/bernorieder/machen/releases/latest"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"/></svg>Download machen</a>
+          <span class="command" title="Install with Homebrew"><span class="prompt" aria-hidden="true">$</span><code>brew install bernorieder/machen/machen</code></span>
+        </div>
         <p class="small">Free and open source · macOS 14 or later · Mac with Apple silicon</p>
       </div>
 
@@ -85,7 +87,7 @@
           <li>Click the icon, then <strong>Sign in with Google</strong>, and allow access in your browser.</li>
         </ol>
         <p>With <a href="https://brew.sh">Homebrew</a>, instead of the first two steps, run this in Terminal:</p>
-        <div class="command block"><code>brew install bernorieder/machen/machen</code></div>
+        <div class="command block"><span class="prompt" aria-hidden="true">$</span><code>brew install bernorieder/machen/machen</code></div>
         <p>To add another account, open <strong>Settings → Sources</strong> and click <strong>Add Google Account</strong>.</p>
         <p>To update, download the new version and drag it into Applications, replacing the old one, or run <code>brew upgrade machen</code>. Your settings and sign-in are kept.</p>
       </section>
@@ -100,8 +102,8 @@
   <script>
     // Adds a copy button to each command, which shows a check mark for a moment once it has copied.
     // Without the script, a click on the command still selects all of it.
-    /* The icons are copy-16 and check-16 from GitHub's Octicons (https://github.com/primer/octicons),
-       under this license:
+    /* The icons here and in the Download button are copy-16, check-16 and download-16 from GitHub's
+       Octicons (https://github.com/primer/octicons), under this license:
 
        MIT License
 

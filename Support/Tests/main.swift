@@ -367,6 +367,23 @@ import AppKit
     check(Store.carriedOver(loaded, loadedDays: 2, from: today, to: today.adding(days: 3)).1 == 0,
           "nothing is kept beyond what was loaded")
 
+    print("Filtering tasks")
+    func item(_ id: String, due days: Int?, parent: String? = nil) -> TaskItem {
+        TaskItem(taskID: id, listID: "fake/todo", accountID: "fake", title: id, notes: "",
+                 due: days.map { today.adding(days: $0) }, position: id, parentID: parent)
+    }
+    let arranged = TaskItem.arranged([item("late", due: -2), item("now", due: 0), item("later", due: 1),
+                                      item("undated", due: nil), item("undated/now", due: 0, parent: "undated"),
+                                      item("undated/undated", due: nil, parent: "undated")])
+    func shown(_ filter: TaskFilter) -> [String] {
+        TaskItem.filtered(arranged) { filter.includes($0, today: today) }.map(\.taskID)
+    }
+    check(shown(.dueOnly) == ["late", "now", "later", "undated", "undated/now"],
+          "due date only keeps dated tasks, and an undated parent of a dated subtask")
+    check(shown(.dueToday) == ["late", "now", "undated", "undated/now"],
+          "due today keeps today's and overdue tasks (\(shown(.dueToday).joined(separator: ", ")))")
+    check(TaskFilter.dueToday.next == .all, "the Tasks heading cycles back to all after due today")
+
     print(failures == 0 ? "\nAll checks passed." : "\n\(failures) check(s) failed.")
 }
 

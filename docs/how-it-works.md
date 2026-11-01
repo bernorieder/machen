@@ -70,16 +70,17 @@ The intervals are in the `Sync` enum in `Store.swift`.
 
 ### Events
 
-- **The 5-minute sync** loads 28 days ahead while notifications are on: 4 weeks is Google's maximum reminder time, so reminders like "1 week before" work. With notifications off it loads only the days shown.
+- **The 5-minute sync** loads 28 days ahead while notifications are on and events are shown: 4 weeks is Google's maximum reminder time, so reminders like "1 week before" work. With notifications off it loads only the days shown.
 - **The minute refresh** reloads the days shown, but at least two, so reminders for early tomorrow stay current. It keeps the events loaded further ahead.
 - **Changing the number of days** shows already-loaded days right away, and loads more only if needed, after a short pause so several clicks on the stepper load once.
 - **Requests stay small:** repeating events are expanded into single occurrences (`singleEvents=true`), and every request asks only for the fields machen uses (`fields=items(…)`, so no guest lists, for example).
 - **Shown calendars only:** only calendars switched on in **Settings → Sources** are loaded. Hiding a calendar or list just filters what's loaded; showing one loads it.
+- **Only tasks:** when **Settings → Sources** is set to show only tasks, events are still loaded, so they show at once when switched back on, but get no notifications.
 - **Cost:** each load costs one request per shown calendar, plus one more for each further page of 250 events.
 
 ### Tasks
 
-Tasks are loaded per list with `showCompleted=false`. Within a list, top-level tasks are sorted by due date, with undated ones last, then by Google's own order; subtasks follow their parent in Google's order. With the **Due date only** filter, an undated parent stays visible if one of its subtasks has a date.
+Tasks are loaded per list with `showCompleted=false`. Within a list, top-level tasks are sorted by due date, with undated ones last, then by Google's own order; subtasks follow their parent in Google's order. With the **Due date only** filter, an undated parent stays visible if one of its subtasks has a date. **Due today** works the same way, and includes overdue tasks.
 
 Moving a task to another list takes its open subtasks along. Google doesn't say whether subtasks follow their task, so machen moves them first, then the task, then puts them back under it in their order. Google doesn't move repeating tasks between lists, or tasks between accounts.
 
@@ -114,7 +115,7 @@ Every edit becomes a `PendingChange`. It shows in the list at once, goes into a 
 
 - **What becomes a notification:** each popup reminder of an event, that is the event's own reminders or, if it uses the defaults, its calendar's default reminders. Email reminders are left to Google. Declined events are skipped.
 - **Scheduling:** notifications are scheduled with macOS's `UserNotifications` after every sync, and already at launch from the cache. Only new or changed reminders are handed to macOS; ones no longer wanted are removed. At most the 60 soonest are scheduled at a time. Scheduling runs after the loading spinner stops, because the first time macOS may wait for an answer to its permission prompt.
-- **Removing:** when machen quits, it removes its pending notifications, because macOS would deliver them without asking machen. They're also removed when the last account is removed or signed out, and when **Event notifications** is switched off. Events of a signed-out account get no notifications.
+- **Removing:** when machen quits, it removes its pending notifications, because macOS would deliver them without asking machen. They're also removed when the last account is removed or signed out, and when **Event notifications** is switched off or machen shows only tasks. Events of a signed-out account get no notifications.
 - **Join:** a notification for an event with a video call has a **Join** button.
 - **Permission:** macOS asks for permission the first time. If it's denied, Settings says so and links to System Settings.
 

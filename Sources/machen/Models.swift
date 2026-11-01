@@ -159,17 +159,17 @@ struct TaskItem: Identifiable, Hashable, Codable {
         }
     }
 
-    /// Keeps only dated tasks from an `arranged` list. A parent without a date stays when one
-    /// of its subtasks has one, so the subtask keeps its context.
-    static func withDueDates(_ arranged: [TaskItem]) -> [TaskItem] {
+    /// Keeps only the tasks of an `arranged` list that `keep` accepts, such as dated ones. A
+    /// parent it doesn't accept stays when one of its subtasks is kept, so the subtask keeps its context.
+    static func filtered(_ arranged: [TaskItem], keeping keep: (TaskItem) -> Bool) -> [TaskItem] {
         var result: [TaskItem] = []
         var block: [TaskItem] = []
         func flush() {
             guard let root = block.first else { return }
-            let datedSubtasks = block.dropFirst().filter { $0.due != nil }
-            if root.due != nil || !datedSubtasks.isEmpty {
+            let keptSubtasks = block.dropFirst().filter(keep)
+            if keep(root) || !keptSubtasks.isEmpty {
                 result.append(root)
-                result += datedSubtasks
+                result += keptSubtasks
             }
             block = []
         }

@@ -17,66 +17,71 @@ struct AgendaView: View {
                             .padding(.bottom, Layout.ErrorBanner.bottomSpace)
                     }
 
-                    SectionHeader(title: "Events", count: Set(days.flatMap { $0.events.map(\.id) }).count,
-                                  addHelp: "New event", addDisabled: store.newEventDraft() == nil,
-                                  adds: [AddAction(title: "New Event") {
-                                      if let draft = store.newEventDraft() { route = .event(draft) }
-                                  }],
-                                  mode: Store.eventDaysLabel(store.eventDays),
-                                  titleHelp: "Click to show: \(Store.eventDaysLabel(store.nextEventDays))",
-                                  onTitleTap: { store.eventDays = store.nextEventDays })
-                    ForEach(days) { group in
-                        // A single day needs no day heading; the header already names it.
-                        if store.eventDays > 1 {
-                            GroupHeader(title: Self.dayLabel(group.day), color: nil, addHelp: "New event on this day",
-                                        addDisabled: store.newEventDraft() == nil) {
-                                if let draft = store.newEventDraft(on: group.day) { route = .event(draft) }
+                    if store.shownItems.includesEvents {
+                        SectionHeader(title: "Events", count: Set(days.flatMap { $0.events.map(\.id) }).count,
+                                      addHelp: "New event", addDisabled: store.newEventDraft() == nil,
+                                      adds: [AddAction(title: "New Event") {
+                                          if let draft = store.newEventDraft() { route = .event(draft) }
+                                      }],
+                                      mode: Store.eventDaysLabel(store.eventDays),
+                                      titleHelp: "Click to show: \(Store.eventDaysLabel(store.nextEventDays))",
+                                      onTitleTap: { store.eventDays = store.nextEventDays })
+                        ForEach(days) { group in
+                            // A single day needs no day heading; the header already names it.
+                            if store.eventDays > 1 {
+                                GroupHeader(title: Self.dayLabel(group.day), color: nil, addHelp: "New event on this day",
+                                            addDisabled: store.newEventDraft() == nil) {
+                                    if let draft = store.newEventDraft(on: group.day) { route = .event(draft) }
+                                }
                             }
-                        }
-                        if group.events.isEmpty {
-                            EmptyRow(text: store.isLoaded(group.day) ? "No events"
-                                     : store.isOffline ? "Not available offline" : "Loading…")
-                        }
-                        ForEach(group.events) { event in
-                            EventRow(event: event,
-                                     startsHere: store.multiDayMode == .todayAndStart && group.isStartDay(of: event),
-                                     isPending: store.isPending(event)) {
-                                open(event)
+                            if group.events.isEmpty {
+                                EmptyRow(text: store.isLoaded(group.day) ? "No events"
+                                         : store.isOffline ? "Not available offline" : "Loading…")
+                            }
+                            ForEach(group.events) { event in
+                                EventRow(event: event,
+                                         startsHere: store.multiDayMode == .todayAndStart && group.isStartDay(of: event),
+                                         isPending: store.isPending(event)) {
+                                    open(event)
+                                }
                             }
                         }
                     }
-
-                    Divider()
-                        .padding(.top, Layout.SectionHeading.spaceAboveDivider)
-                        .padding(.horizontal, Layout.SectionHeading.horizontalPadding)
-                    SectionHeader(title: "Tasks", count: groups.reduce(0) { $0 + $1.tasks.count },
-                                  addHelp: "New task or list", addDisabled: store.newTaskDraft() == nil,
-                                  adds: [AddAction(title: "New Task") {
-                                      if let draft = store.newTaskDraft() { route = .task(draft) }
-                                  }, AddAction(title: "New List…") {
-                                      if let id = store.defaultTaskListAccountID { route = .newTaskList(accountID: id) }
-                                  }],
-                                  mode: store.taskFilter.label,
-                                  titleHelp: "Click to show: \(store.taskFilter.next.label)",
-                                  onTitleTap: { store.taskFilter = store.taskFilter.next })
-                    if groups.isEmpty {
-                        EmptyRow(text: store.lastSync == nil ? (store.isOffline ? "Not available offline" : "Loading…")
-                                 : store.taskFilter == .dueOnly ? "No open tasks with a due date" : "No open tasks")
+                    if store.shownItems == .both {
+                        Divider()
+                            .padding(.top, Layout.SectionHeading.spaceAboveDivider)
+                            .padding(.horizontal, Layout.SectionHeading.horizontalPadding)
                     }
-                    ForEach(groups) { group in
-                        if listNames {
-                            GroupHeader(title: group.title, color: group.color, addHelp: "New task in \(group.title)",
-                                        onAdd: { route = .task(TaskDraft(listID: group.list.id, day: store.day)) },
-                                        isCollapsed: group.isCollapsed,
-                                        hiddenCount: group.tasks.count,
-                                        onToggle: { withAnimation(.easeOut(duration: 0.15)) { store.toggleCollapsed(group.list) } })
+                    if store.shownItems.includesTasks {
+                        SectionHeader(title: "Tasks", count: groups.reduce(0) { $0 + $1.tasks.count },
+                                      addHelp: "New task or list", addDisabled: store.newTaskDraft() == nil,
+                                      adds: [AddAction(title: "New Task") {
+                                          if let draft = store.newTaskDraft() { route = .task(draft) }
+                                      }, AddAction(title: "New List…") {
+                                          if let id = store.defaultTaskListAccountID { route = .newTaskList(accountID: id) }
+                                      }],
+                                      mode: store.taskFilter.label,
+                                      titleHelp: "Click to show: \(store.taskFilter.next.label)",
+                                      onTitleTap: { store.taskFilter = store.taskFilter.next })
+                        if groups.isEmpty {
+                            EmptyRow(text: store.lastSync == nil ? (store.isOffline ? "Not available offline" : "Loading…")
+                                     : store.taskFilter.emptyText)
                         }
-                        ForEach(group.visibleTasks) { task in
-                            TaskRow(task: task, color: group.color,
-                                    action: { route = .task(TaskDraft(task)) },
-                                    subtaskCount: task.isSubtask ? 0 : group.subtaskCounts[task.taskID] ?? 0,
-                                    subtasksCollapsed: store.subtasksCollapsed(task),
-                                    onToggleSubtasks: { withAnimation(.easeOut(duration: 0.15)) { store.toggleSubtasks(task) } })
+                        ForEach(groups) { group in
+                            if listNames {
+                                GroupHeader(title: group.title, color: group.color, addHelp: "New task in \(group.title)",
+                                            onAdd: { route = .task(TaskDraft(listID: group.list.id, day: store.day)) },
+                                            isCollapsed: group.isCollapsed,
+                                            hiddenCount: group.tasks.count,
+                                            onToggle: { withAnimation(.easeOut(duration: 0.15)) { store.toggleCollapsed(group.list) } })
+                            }
+                            ForEach(group.visibleTasks) { task in
+                                TaskRow(task: task, color: group.color,
+                                        action: { route = .task(TaskDraft(task)) },
+                                        subtaskCount: task.isSubtask ? 0 : group.subtaskCounts[task.taskID] ?? 0,
+                                        subtasksCollapsed: store.subtasksCollapsed(task),
+                                        onToggleSubtasks: { withAnimation(.easeOut(duration: 0.15)) { store.toggleSubtasks(task) } })
+                            }
                         }
                     }
                 }

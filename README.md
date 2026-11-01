@@ -16,14 +16,14 @@ Website: [machen.polsys.net](https://machen.polsys.net)
 ## What it does
 
 - **Events:** shows the events of your Google calendars for today, or for up to two weeks ahead. Click the EVENTS heading to switch between today, 2 days, 3 days and a week.
-- **Tasks:** shows your open tasks from Google Tasks, grouped by list and sorted by due date. Overdue tasks are marked in red, and subtasks appear under their task. You can fold a list or a task's subtasks away.
+- **Tasks:** shows your open tasks from Google Tasks, grouped by list and sorted by due date. Overdue tasks are marked in red, and subtasks appear under their task. You can fold a list or a task's subtasks away. Click the TASKS heading to switch between all tasks, those with a due date, and those due today (overdue ones included).
 - **Editing:** add, edit and delete events and tasks, including subtasks, and create task lists. You can move an event to another calendar, and a task with its subtasks to another list. For repeating events, you choose whether a change applies to one event or to all of them.
 - **Completing tasks:** click the circle next to a task to mark it as done. For a few seconds afterwards you can undo it.
 - **Several accounts:** connect more than one Google account, for example a personal and a work account. Their events and tasks appear together in one list.
 - **Video calls:** events with a Google Meet, Zoom, Teams, Webex or similar link get a **Join** button, in the list and in their notification. In the list, it's greyed out until 5 minutes before the start, but can be clicked at any time.
-- **Notifications:** machen shows the reminders you've set in Google Calendar as Mac notifications.
+- **Notifications:** machen shows the reminders you've set in Google Calendar as Mac notifications, unless it shows only tasks.
 - **Offline:** without a connection, machen shows the events and tasks it loaded last, up to four weeks ahead, and keeps showing their reminders. You can go on adding, changing and completing them: machen keeps your changes and sends them to Google as soon as you're online again. Changes not sent yet are marked with a small sync icon.
-- **Your choice:** pick which accounts, calendars and task lists to show and in what order, the colour of each task list, text sizes, spacing, the height of the panel, and the menu bar icon.
+- **Your choice:** show events, tasks or both, pick which accounts, calendars and task lists to show and in what order, the colour of each task list, text sizes, spacing, the height of the panel, and the menu bar icon.
 
 <p align="center">
   <img src="docs/screenshots/settings-general.png" width="220" alt="Settings, General: days of events, multi-day events, task filter, launch at login and notifications">

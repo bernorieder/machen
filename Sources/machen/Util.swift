@@ -122,15 +122,50 @@ enum ListPalette {
     }
 }
 
-/// Which open tasks the agenda lists, chosen in Settings.
+/// Whether the agenda shows events, tasks or both, chosen in Settings → Sources.
+enum ShownItems: String, CaseIterable, Identifiable {
+    case both, events, tasks
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .both: "Both"
+        case .events: "Events"
+        case .tasks: "Tasks"
+        }
+    }
+
+    var includesEvents: Bool { self != .tasks }
+    var includesTasks: Bool { self != .events }
+}
+
+/// Which open tasks the agenda lists, chosen in Settings or by clicking the Tasks heading.
 enum TaskFilter: String, CaseIterable, Identifiable {
-    case all, dueOnly
+    case all, dueOnly, dueToday
 
     var id: String { rawValue }
     var label: String {
         switch self {
         case .all: "All"
         case .dueOnly: "Due date only"
+        case .dueToday: "Due today"
+        }
+    }
+
+    var emptyText: String {
+        switch self {
+        case .all: "No open tasks"
+        case .dueOnly: "No open tasks with a due date"
+        case .dueToday: "No open tasks due today"
+        }
+    }
+
+    /// Whether the filter keeps `task`. Due today includes overdue tasks, which are still to do.
+    func includes(_ task: TaskItem, today: Date) -> Bool {
+        switch self {
+        case .all: true
+        case .dueOnly: task.due != nil
+        case .dueToday: task.due.map { $0 < today.adding(days: 1) } ?? false
         }
     }
 

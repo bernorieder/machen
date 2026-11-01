@@ -141,10 +141,16 @@ final class Store: ObservableObject {
     @Published var notificationsEnabled: Bool {
         didSet {
             UserDefaults.standard.set(notificationsEnabled, forKey: "notificationsEnabled")
-            // Turning them on needs events up to 4 weeks ahead; turning them off removes what's scheduled
-            Task {
-                if notificationsEnabled { await refreshAllEvents() } else { await scheduleReminders() }
-            }
+            remindersChanged()
+        }
+    }
+
+    /// Events, tasks or both. Events are still loaded while hidden, so they show at once when
+    /// switched back on; their reminders are left out.
+    @Published var shownItems: ShownItems {
+        didSet {
+            UserDefaults.standard.set(shownItems.rawValue, forKey: "shownItems")
+            if shownItems.includesEvents != oldValue.includesEvents { remindersChanged() }
         }
     }
     /// macOS doesn't allow machen's notifications (set in System Settings → Notifications).
@@ -261,6 +267,7 @@ final class Store: ObservableObject {
         nameTextSize = UserDefaults.standard.string(forKey: "nameTextSize").flatMap(TextSize.init) ?? .medium
         detailTextSize = UserDefaults.standard.string(forKey: "detailTextSize").flatMap(TextSize.init) ?? .medium
         taskFilter = UserDefaults.standard.string(forKey: "taskFilter").flatMap(TaskFilter.init) ?? .all
+        shownItems = UserDefaults.standard.string(forKey: "shownItems").flatMap(ShownItems.init) ?? .both
         menuBarIcon = UserDefaults.standard.string(forKey: "menuBarIcon") ?? "calendar"
         multiDayMode = UserDefaults.standard.string(forKey: "multiDayMode").flatMap(MultiDayMode.init) ?? .everyDay
         notificationsEnabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
@@ -394,7 +401,7 @@ final class Store: ObservableObject {
         let titleCounts = Dictionary(grouping: lists, by: \.title).mapValues(\.count)
         return lists.compactMap { list in
             let inList = tasks.filter { $0.listID == list.id }
-            let items = taskFilter == .dueOnly ? TaskItem.withDueDates(inList) : inList
+            let items = taskFilter == .all ? inList : TaskItem.filtered(inList) { taskFilter.includes($0, today: day) }
             guard !items.isEmpty else { return nil }
             let listCollapsed = headingsShown && collapsed.contains(Self.listKey(list.id))
             let visible = listCollapsed ? [] : items.filter { task in
@@ -483,9 +490,12 @@ final class Store: ObservableObject {
 
     /// Days of events refreshed every minute: what's shown, but at least `Sync.minimumDaysLoaded`.
     private var daysToLoad: Int { max(eventDays, Sync.minimumDaysLoaded) }
+    /// Notifications are on, and events are shown.
+    private var remindersWanted: Bool { notificationsEnabled && shownItems.includesEvents }
+
     /// Days of events loaded by the full sync: 4 weeks while notifications may need them.
     private var fullEventDays: Int {
-        notificationsEnabled && !notificationsBlocked && Notifier.shared != nil
+        remindersWanted && !notificationsBlocked && Notifier.shared != nil
             ? max(Sync.reminderWindowDays, daysToLoad) : daysToLoad
     }
     private var fullSyncDue: Bool {
@@ -839,9 +849,16 @@ final class Store: ObservableObject {
 
     /// Brings macOS's scheduled notifications in line with the loaded events. The first time,
     /// macOS asks whether machen may show notifications.
+    /// Turning reminders on needs events up to 4 weeks ahead; turning them off removes what's scheduled.
+    private func remindersChanged() {
+        Task {
+            if remindersWanted { await refreshAllEvents() } else { await scheduleReminders() }
+        }
+    }
+
     private func scheduleReminders() async {
         guard let notifier = Notifier.shared else { return }
-        guard notificationsEnabled, accounts.hasActiveAccount else {
+        guard remindersWanted, accounts.hasActiveAccount else {
             await notifier.removeAll()
             return
         }

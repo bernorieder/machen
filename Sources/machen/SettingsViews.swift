@@ -213,9 +213,18 @@ struct SettingsView: View {
                 if let launchError {
                     Text(launchError).font(.caption).foregroundStyle(.red)
                 }
-                Toggle("Event notifications", isOn: $store.notificationsEnabled)
+                // There are none while events are hidden
+                Toggle("Event notifications", isOn: Binding(
+                    get: { store.notificationsEnabled && store.shownItems.includesEvents },
+                    set: { store.notificationsEnabled = $0 }))
                     .help("Shows the popup reminders you set in Google Calendar, for the calendars shown in machen")
-                if store.notificationsEnabled && store.notificationsBlocked {
+                    .disabled(!store.shownItems.includesEvents)
+                if !store.shownItems.includesEvents {
+                    Text("Off while machen shows only tasks (see Sources).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if store.notificationsEnabled && store.shownItems.includesEvents && store.notificationsBlocked {
                     HStack {
                         Text("Notifications are turned off for machen in System Settings.")
                             .font(.caption)
@@ -290,63 +299,73 @@ struct SettingsView: View {
                 }
             }
             Section {
-                let calendars = store.calendars
-                ForEach(Array(calendars.enumerated()), id: \.element.id) { index, cal in
-                    ReorderRow(id: cal.id, onDrop: { store.moveCalendar($0, onto: cal.id) },
-                               onMoveUp: index > 0 ? { store.moveCalendar(cal.id, onto: calendars[index - 1].id) } : nil,
-                               onMoveDown: index < calendars.count - 1
-                                   ? { store.moveCalendar(cal.id, onto: calendars[index + 1].id) } : nil) {
-                        // The calendar's colour comes from Google Calendar. The padding lines it up
-                        // with the list colours below, which are menus with a little padding of their own.
-                        Image(nsImage: ListPalette.swatch(cal.color ?? "#888888"))
-                            .padding(.horizontal, 3)
-                            .accessibilityHidden(true)
-                        Toggle(isOn: Binding(get: { store.isShown(cal) }, set: { store.setShown(cal, $0) })) {
-                            SourceLabel(name: cal.name, account: accountName(cal.accountID))
-                        }
-                    }
+                Picker("Show", selection: $store.shownItems) {
+                    ForEach(ShownItems.allCases) { Text($0.label).tag($0) }
                 }
-            } header: {
-                Text("Calendars")
-            } footer: {
-                Text("Drag to reorder. Events at the same time follow this order.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .pickerStyle(.segmented)
             }
-            Section {
-                let lists = store.taskLists
-                ForEach(Array(lists.enumerated()), id: \.element.id) { index, list in
-                    ReorderRow(id: list.id, onDrop: { store.moveTaskList($0, onto: list.id) },
-                               onMoveUp: index > 0 ? { store.moveTaskList(list.id, onto: lists[index - 1].id) } : nil,
-                               onMoveDown: index < lists.count - 1
-                                   ? { store.moveTaskList(list.id, onto: lists[index + 1].id) } : nil) {
-                        Menu {
-                            ForEach(ListPalette.colors, id: \.hex) { color in
-                                Button {
-                                    store.setColor(color.hex, for: list)
-                                } label: {
-                                    Label { Text(color.name) } icon: { Image(nsImage: ListPalette.swatch(color.hex)) }
-                                }
+            if store.shownItems.includesEvents {
+                Section {
+                    let calendars = store.calendars
+                    ForEach(Array(calendars.enumerated()), id: \.element.id) { index, cal in
+                        ReorderRow(id: cal.id, onDrop: { store.moveCalendar($0, onto: cal.id) },
+                                   onMoveUp: index > 0 ? { store.moveCalendar(cal.id, onto: calendars[index - 1].id) } : nil,
+                                   onMoveDown: index < calendars.count - 1
+                                       ? { store.moveCalendar(cal.id, onto: calendars[index + 1].id) } : nil) {
+                            // The calendar's colour comes from Google Calendar. The padding lines it up
+                            // with the list colours below, which are menus with a little padding of their own.
+                            Image(nsImage: ListPalette.swatch(cal.color ?? "#888888"))
+                                .padding(.horizontal, 3)
+                                .accessibilityHidden(true)
+                            Toggle(isOn: Binding(get: { store.isShown(cal) }, set: { store.setShown(cal, $0) })) {
+                                SourceLabel(name: cal.name, account: accountName(cal.accountID))
                             }
-                        } label: {
-                            Image(nsImage: ListPalette.swatch(store.colorHex(for: list)))
-                        }
-                        .menuStyle(.borderlessButton)
-                        .menuIndicator(.hidden)
-                        .fixedSize()
-                        .help("Choose colour")
-                        .accessibilityLabel("Colour of \(list.title)")
-                        Toggle(isOn: Binding(get: { store.isShown(list) }, set: { store.setShown(list, $0) })) {
-                            SourceLabel(name: list.title, account: accountName(list.accountID))
                         }
                     }
+                } header: {
+                    Text("Calendars")
+                } footer: {
+                    Text("Drag to reorder. Events at the same time follow this order.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-            } header: {
-                Text("Task lists")
-            } footer: {
-                Text("Drag to reorder the lists in the main screen. Click a dot to change a list's colour.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            }
+            if store.shownItems.includesTasks {
+                Section {
+                    let lists = store.taskLists
+                    ForEach(Array(lists.enumerated()), id: \.element.id) { index, list in
+                        ReorderRow(id: list.id, onDrop: { store.moveTaskList($0, onto: list.id) },
+                                   onMoveUp: index > 0 ? { store.moveTaskList(list.id, onto: lists[index - 1].id) } : nil,
+                                   onMoveDown: index < lists.count - 1
+                                       ? { store.moveTaskList(list.id, onto: lists[index + 1].id) } : nil) {
+                            Menu {
+                                ForEach(ListPalette.colors, id: \.hex) { color in
+                                    Button {
+                                        store.setColor(color.hex, for: list)
+                                    } label: {
+                                        Label { Text(color.name) } icon: { Image(nsImage: ListPalette.swatch(color.hex)) }
+                                    }
+                                }
+                            } label: {
+                                Image(nsImage: ListPalette.swatch(store.colorHex(for: list)))
+                            }
+                            .menuStyle(.borderlessButton)
+                            .menuIndicator(.hidden)
+                            .fixedSize()
+                            .help("Choose colour")
+                            .accessibilityLabel("Colour of \(list.title)")
+                            Toggle(isOn: Binding(get: { store.isShown(list) }, set: { store.setShown(list, $0) })) {
+                                SourceLabel(name: list.title, account: accountName(list.accountID))
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Task lists")
+                } footer: {
+                    Text("Drag to reorder the lists in the main screen. Click a dot to change a list's colour.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)

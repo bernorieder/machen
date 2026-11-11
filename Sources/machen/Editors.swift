@@ -26,6 +26,27 @@ struct EditorHeader: View {
     }
 }
 
+/// Puts the cursor in a field when its editor opens, so typing can start right away.
+private struct FocusOnAppear: ViewModifier {
+    let enabled: Bool
+    @FocusState private var focused: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .focused($focused)
+            .onAppear {
+                // On the next turn of the run loop: right away the field isn't in the window yet
+                if enabled { DispatchQueue.main.async { focused = true } }
+            }
+    }
+}
+
+extension View {
+    func focusOnAppear(_ enabled: Bool = true) -> some View {
+        modifier(FocusOnAppear(enabled: enabled))
+    }
+}
+
 /// Inline confirmation (alerts and dialogs tend to dismiss menu bar windows). Give it an `.id`
 /// that changes with what it deletes, so a pending confirmation doesn't carry over.
 struct DeleteRow: View {
@@ -109,6 +130,7 @@ struct EventEditor: View {
                 }
                 Section {
                     TextField("Title", text: $draft.title, prompt: Text("Event title"))
+                        .focusOnAppear(draft.isNew)
                     Picker("Calendar", selection: $draft.calendarID) {
                         AccountSections(groups: store.calendarChoices(for: draft)) { cal in
                             Text(cal.name).tag(cal.id)
@@ -242,6 +264,7 @@ struct TaskListEditor: View {
             Form {
                 Section {
                     TextField("Name", text: $title, prompt: Text("List name"))
+                        .focusOnAppear()
                     if store.taskListAccounts.count > 1 {
                         Picker("Account", selection: $accountID) {
                             ForEach(store.taskListAccounts) { Text($0.name).tag($0.id) }
@@ -318,6 +341,7 @@ struct TaskEditor: View {
             Form {
                 Section {
                     TextField("Title", text: $draft.title, prompt: Text(draft.isSubtask ? "Subtask title" : "Task title"))
+                        .focusOnAppear(draft.isNew)
                     if draft.isSubtask {
                         LabeledContent("Subtask of", value: parentTitle)
                     } else {
